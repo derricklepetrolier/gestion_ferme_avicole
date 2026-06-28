@@ -5,6 +5,27 @@ from datetime import datetime, timedelta
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="AgroGestion Togo - Pilote", layout="wide", page_icon="🐓")
 
+# --- SYSTEME DE CONNEXION ---
+if "authentifie" not in st.session_state:
+    st.session_state["authentifie"] = False
+
+if not st.session_state["authentifie"]:
+    st.title("🔒 Accès Sécurisé - AgroGestion")
+    st.write("Veuillez vous connecter pour accéder au tableau de bord.")
+    
+    identifiant = st.text_input("Identifiant")
+    mot_de_passe = st.text_input("Mot de passe", type="password")
+    
+    if st.button("Se connecter"):
+        # Remplacer par les identifiants souhaités
+        if identifiant == "Direction" and mot_de_passe == "Togo2026!":
+            st.session_state["authentifie"] = True
+            st.rerun() # Rafraîchit la page pour enlever le formulaire
+        else:
+            st.error("Identifiant ou mot de passe incorrect.")
+    
+    st.stop() # Empêche le reste du code de s'exécuter si non connecté
+
 # --- 2. DONNÉES RÉELLES (Issues de la Fiche de Collecte V2) ---
 # Ratios de consommation (kg/jour/sujet)
 ratios = {
