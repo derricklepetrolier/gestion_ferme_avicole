@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from fpdf import FPDF  # NOUVEAU : Import de la bibliothèque PDF
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NGA Togo - Pilote", layout="wide", page_icon="🐓")
@@ -26,48 +27,22 @@ if not st.session_state["authentifie"]:
     mot_de_passe = st.text_input("Mot de passe", type="password")
     
     if st.button("Se connecter"):
-        # Remplacer par les identifiants souhaités
         if identifiant == "Direction" and mot_de_passe == "Togo2026!":
             st.session_state["authentifie"] = True
-            st.rerun() # Rafraîchit la page pour enlever le formulaire
+            st.rerun() 
         else:
             st.error("Identifiant ou mot de passe incorrect.")
     
-    st.stop() # Empêche le reste du code de s'exécuter si non connecté
+    st.stop() 
 
-# --- 2. DONNÉES RÉELLES (Issues de la Fiche de Collecte V2) ---
-# Ratios de consommation (kg/jour/sujet)
-ratios = {
-    "Poussin (Démarrage)": 0.033,  # 33g
-    "Poulette (Croissance)": 0.050, # 50g
-    "Pré-Ponte (Transition)": 0.105, # 105g
-    "Ponte (Production)": 0.115     # 115g
-}
+# --- 2. DONNÉES RÉELLES ---
+ratios = {"Poussin (Démarrage)": 0.033, "Poulette (Croissance)": 0.050, "Pré-Ponte (Transition)": 0.105, "Ponte (Production)": 0.115}
+durees = {"Poussin (Démarrage)": 56, "Poulette (Croissance)": 75, "Pré-Ponte (Transition)": 14, "Ponte (Production)": 435}
+objectifs_ponte = {"Leghons": 80, "Isa Brown": 78}
+tarifs = {"Plateau - Grossiste": 2067, "Plateau - Détaillant": 2142, "Poule Réforme": 2750}
 
-# Durées des phases (en jours)
-durees = {
-    "Poussin (Démarrage)": 56,      # 8 semaines
-    "Poulette (Croissance)": 75,    # 2.5 mois
-    "Pré-Ponte (Transition)": 14,   # 2 semaines
-    "Ponte (Production)": 435       # 14.5 mois
-}
-
-# Objectifs de ponte par race
-objectifs_ponte = {
-    "Leghons": 80,
-    "Isa Brown": 78
-}
-
-# Tarifs moyens (FCFA)
-tarifs = {
-    "Plateau - Grossiste": 2067,
-    "Plateau - Détaillant": 2142,
-    "Poule Réforme": 2750 # Moyenne de 2500-3000
-}
-
-# --- 3. DONNÉES SIMULÉES (En attente des vrais paramètres) ---
-seuil_securite_kg = 2000 # Test : Alerte rouge à 2 Tonnes
-# Simulation d'une formule pour l'aliment ponte
+# --- 3. DONNÉES SIMULÉES ---
+seuil_securite_kg = 2000 
 formule_test = {"Maïs": 0.60, "Tourteaux de soja": 0.25, "Concentré ponte": 0.15}
 
 # --- 4. BARRE LATÉRALE ---
@@ -108,7 +83,6 @@ else:
 m2.metric("Besoin quotidien", f"{conso_jour:.1f} kg")
 m3.metric("Besoin hebdo (7j)", f"{conso_jour * 7:.1f} kg")
 
-# Simulation de l'impact sur les ingrédients
 st.caption("🔍 *Simulation d'impact sur ingrédients (Basé sur une recette test)*")
 c_mais, c_soja, c_conc = st.columns(3)
 c_mais.write(f"- **Maïs (60%)** : {conso_jour * 0.60:.1f} kg/jour")
@@ -145,7 +119,7 @@ with col_v2:
 
 st.divider()
 
-# --- NOUVEAU : FORMULAIRE DE SAISIE DES CRÉANCES ---
+# --- 9. FORMULAIRE DE SAISIE DES CRÉANCES ---
 st.subheader("📝 Ajouter une nouvelle créance ou vente")
 
 with st.form("formulaire_creance", clear_on_submit=True):
@@ -158,26 +132,64 @@ with st.form("formulaire_creance", clear_on_submit=True):
     bouton_ajouter = st.form_submit_button("➕ Enregistrer l'opération")
     
     if bouton_ajouter and nouveau_client:
-        # Création de la nouvelle ligne
         nouvelle_ligne = pd.DataFrame({
             "Client": [nouveau_client.upper()],
             "Type Vente": [nouveau_type],
             "Montant Dû (FCFA)": [nouveau_montant],
             "Statut": [nouveau_statut]
         })
-        # Ajout à la base de données en mémoire
         st.session_state["base_creances"] = pd.concat([st.session_state["base_creances"], nouvelle_ligne], ignore_index=True)
         st.success(f"Opération pour {nouveau_client} enregistrée avec succès !")
 
-# --- AFFICHAGE DU TABLEAU MIS À JOUR ---
+# --- 10. AFFICHAGE DU TABLEAU MIS À JOUR ---
 st.subheader("📊 Registre des opérations")
 st.table(st.session_state["base_creances"])
 
-# Bouton d'exportation lié au tableau dynamique
-csv = st.session_state["base_creances"].to_csv(index=False).encode('utf-8')
+
+# --- 11. NOUVEAU : GÉNÉRATION DU PDF ---
+def generer_pdf(df):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Titre du document
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, txt="Carnet de Creances - NGA Togo", ln=True, align='C')
+    pdf.ln(10)
+    
+    # Configuration des colonnes
+    largeurs = [50, 50, 40, 40]
+    colonnes = ["Client", "Type Vente", "Montant (FCFA)", "Statut"]
+    
+    # En-têtes du tableau PDF
+    pdf.set_font("Arial", "B", 10)
+    for i, col in enumerate(colonnes):
+        pdf.cell(largeurs[i], 10, col, border=1, align='C')
+    pdf.ln()
+    
+    # Remplissage des lignes avec nettoyage des accents pour le PDF
+    pdf.set_font("Arial", "", 10)
+    for index, row in df.iterrows():
+        # Nettoyage des caractères spéciaux pour éviter les bugs PDF
+        txt_client = str(row['Client'])[:25]
+        txt_type = str(row['Type Vente']).replace("Œ", "Oe").replace("é", "e")[:25]
+        txt_montant = f"{int(row['Montant Dû (FCFA)'])} FCFA"
+        txt_statut = str(row['Statut']).replace("é", "e")
+        
+        pdf.cell(largeurs[0], 10, txt_client, border=1)
+        pdf.cell(largeurs[1], 10, txt_type, border=1)
+        pdf.cell(largeurs[2], 10, txt_montant, border=1, align='R')
+        pdf.cell(largeurs[3], 10, txt_statut, border=1, align='C')
+        pdf.ln()
+        
+    # Retourne le PDF sous forme de données binaires
+    return bytes(pdf.output(dest='S').encode('latin-1'))
+
+# Création du bouton de téléchargement
+pdf_data = generer_pdf(st.session_state["base_creances"])
+
 st.download_button(
-    label="📥 Exporter le carnet de créances (CSV)",
-    data=csv,
-    file_name='creances_clients_togo.csv',
-    mime='text/csv',
+    label="📄 Exporter le carnet en PDF",
+    data=pdf_data,
+    file_name=f"creances_NGA_togo_{datetime.now().strftime('%Y%m%d')}.pdf",
+    mime="application/pdf",
 )
