@@ -3,14 +3,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="AgroGestion Togo - Pilote", layout="wide", page_icon="🐓")
+st.set_page_config(page_title="NGA Togo - Pilote", layout="wide", page_icon="🐓")
 
 # --- SYSTEME DE CONNEXION ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
 if not st.session_state["authentifie"]:
-    st.title("🔒 Accès Sécurisé - AgroGestion")
+    st.title("🔒 Accès Sécurisé - NGA AgroGestion")
     st.write("Veuillez vous connecter pour accéder au tableau de bord.")
     
     identifiant = st.text_input("Identifiant")
