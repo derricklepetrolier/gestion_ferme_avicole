@@ -70,7 +70,7 @@ st.sidebar.divider()
 st.sidebar.warning("Statut : Pilote V1 (Données Mixtes)")
 
 # --- 5. EN-TÊTE ---
-st.title("🌾 Système de gestion Agroalimentaire NGA Togo - Pilote V1")
+st.title("🐓🥚 Système de gestion Agroalimentaire NGA Togo - Pilote V1")
 st.markdown(f"### Suivi d'exploitation - Objectif cible ({race_choisie}) : {objectifs_ponte[race_choisie]}%")
 st.divider()
 
