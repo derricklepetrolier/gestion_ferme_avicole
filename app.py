@@ -5,6 +5,15 @@ from datetime import datetime, timedelta
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NGA Togo - Pilote", layout="wide", page_icon="🐓")
 
+# --- INITIALISATION DE LA BASE DE DONNÉES EN MÉMOIRE ---
+if "base_creances" not in st.session_state:
+    st.session_state["base_creances"] = pd.DataFrame({
+        "Client": ["AGROSATH", "JOSUE", "Client Passager"],
+        "Type Vente": ["Œufs (Grossiste)", "Œufs (Détaillant)", "Poules Réforme"],
+        "Montant Dû (FCFA)": [350000, 125000, 0],
+        "Statut": ["En attente", "Retard", "Payé Cash"]
+    })
+
 # --- SYSTEME DE CONNEXION ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
@@ -134,17 +143,38 @@ with col_v2:
     revenu_jour = plateaux_vendus * prix_actuel
     st.metric("Chiffre d'Affaires Brut Estimé", f"{revenu_jour:,.0f} FCFA".replace(",", " "))
 
-st.subheader("Suivi des clients débiteurs")
-data_finance = {
-    "Client": ["AGROSATH", "JOSUE", "Client Passager"],
-    "Type Vente": ["Œufs (Grossiste)", "Œufs (Détaillant)", "Poules Réforme"],
-    "Montant Dû (FCFA)": [350000, 125000, 0],
-    "Statut": ["En attente", "Retard", "Payé Cash"]
-}
-df_fin = pd.DataFrame(data_finance)
-st.table(df_fin)
+st.divider()
 
-csv = df_fin.to_csv(index=False).encode('utf-8')
+# --- NOUVEAU : FORMULAIRE DE SAISIE DES CRÉANCES ---
+st.subheader("📝 Ajouter une nouvelle créance ou vente")
+
+with st.form("formulaire_creance", clear_on_submit=True):
+    col_f1, col_f2 = st.columns(2)
+    nouveau_client = col_f1.text_input("Nom du Client / Acheteur")
+    nouveau_type = col_f2.selectbox("Type de vente", ["Œufs (Grossiste)", "Œufs (Détaillant)", "Poules Réforme", "Fiente/Engrais"])
+    nouveau_montant = col_f1.number_input("Montant Dû ou Payé (FCFA)", min_value=0, step=5000)
+    nouveau_statut = col_f2.selectbox("Statut du paiement", ["En attente", "Retard", "Payé Cash"])
+    
+    bouton_ajouter = st.form_submit_button("➕ Enregistrer l'opération")
+    
+    if bouton_ajouter and nouveau_client:
+        # Création de la nouvelle ligne
+        nouvelle_ligne = pd.DataFrame({
+            "Client": [nouveau_client.upper()],
+            "Type Vente": [nouveau_type],
+            "Montant Dû (FCFA)": [nouveau_montant],
+            "Statut": [nouveau_statut]
+        })
+        # Ajout à la base de données en mémoire
+        st.session_state["base_creances"] = pd.concat([st.session_state["base_creances"], nouvelle_ligne], ignore_index=True)
+        st.success(f"Opération pour {nouveau_client} enregistrée avec succès !")
+
+# --- AFFICHAGE DU TABLEAU MIS À JOUR ---
+st.subheader("📊 Registre des opérations")
+st.table(st.session_state["base_creances"])
+
+# Bouton d'exportation lié au tableau dynamique
+csv = st.session_state["base_creances"].to_csv(index=False).encode('utf-8')
 st.download_button(
     label="📥 Exporter le carnet de créances (CSV)",
     data=csv,
