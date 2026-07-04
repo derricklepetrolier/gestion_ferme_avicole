@@ -63,14 +63,14 @@ formule_test = {"Maïs": 0.60, "Tourteaux de soja": 0.25, "Concentré ponte": 0.
 
 # --- 4. BARRE LATÉRALE ---
 st.sidebar.title("🚜 Menu de Gestion")
-st.sidebar.info("Conseiller : Londres 🇬🇧")
+st.sidebar.info("Utilisateur 1")
 race_choisie = st.sidebar.selectbox("Race de la bande", list(objectifs_ponte.keys()))
 date_arrivee = st.sidebar.date_input("Date d'arrivée des poussins", datetime.now())
 st.sidebar.divider()
 st.sidebar.warning("Statut : Pilote V1 (Données Mixtes)")
 
 # --- 5. EN-TÊTE ---
-st.title("🌾 Complexe Agroalimentaire - Pilote V1")
+st.title("🌾 Système de gestion Agroalimentaire NGA Togo - Pilote V1")
 st.markdown(f"### Suivi d'exploitation - Objectif cible ({race_choisie}) : {objectifs_ponte[race_choisie]}%")
 st.divider()
 
@@ -134,7 +134,7 @@ with col_v2:
     revenu_jour = plateaux_vendus * prix_actuel
     st.metric("Chiffre d'Affaires Brut Estimé", f"{revenu_jour:,.0f} FCFA".replace(",", " "))
 
-st.subheader("Suivi des clients débiteurs (GRM)")
+st.subheader("Suivi des clients débiteurs")
 data_finance = {
     "Client": ["AGROSATH", "JOSUE", "Client Passager"],
     "Type Vente": ["Œufs (Grossiste)", "Œufs (Détaillant)", "Poules Réforme"],
