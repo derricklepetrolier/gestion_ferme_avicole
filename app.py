@@ -6,6 +6,17 @@ from fpdf import FPDF
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NGA Togo - V2", layout="wide", page_icon="🐓")
 
+# --- MASQUER L'INTERFACE STANDARD STREAMLIT ---
+cacher_menu_style = """
+        <style>
+        #MainMenu {visibility: hidden;} 
+        [data-testid="stToolbar"] {visibility: hidden !important;} 
+        footer {visibility: hidden !important;} 
+        header {visibility: hidden !important;} 
+        </style>
+        """
+st.markdown(cacher_menu_style, unsafe_allow_html=True)
+
 # --- 2. INITIALISATION DE LA MÉMOIRE (Base de données simulée) ---
 if "base_creances" not in st.session_state:
     st.session_state["base_creances"] = pd.DataFrame(columns=["Client", "Type Vente", "Montant Dû (FCFA)", "Statut"])
