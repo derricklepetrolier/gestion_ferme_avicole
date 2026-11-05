@@ -29,7 +29,7 @@ if "authentifie" not in st.session_state:
     st.session_state["role"] = ""
 
 if not st.session_state["authentifie"]:
-    st.title("NGA AgroGestion")
+    st.title("🥚🐓 NGA AgroGestion")
     st.write("Veuillez vous connecter avec vos identifiants de site.")
     
     identifiant = st.text_input("Identifiant")
