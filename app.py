@@ -29,10 +29,10 @@ if "authentifie" not in st.session_state:
     st.session_state["role"] = ""
 
 if not st.session_state["authentifie"]:
-    st.title("🔒 Accès Sécurisé - NGA AgroGestion V2")
+    st.title("NGA AgroGestion")
     st.write("Veuillez vous connecter avec vos identifiants de site.")
     
-    identifiant = st.text_input("Identifiant (Sokode ou Lome)")
+    identifiant = st.text_input("Identifiant")
     mot_de_passe = st.text_input("Mot de passe", type="password")
     
     if st.button("Se connecter"):
@@ -57,7 +57,7 @@ prix_grossiste = {"PIWI": 1500, "Petits": 2000, "Moyens": 2400, "Gros": 2800, "S
 prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "Super Gros": 3000, "Cassés": 600}
 
 # --- 5. MENU COMMUN ---
-st.sidebar.title("🚜 NGA Togo - V2")
+st.sidebar.title("🚜 NGA Togo")
 st.sidebar.info(f"Connecté en tant que : **{st.session_state['role'].upper()}**")
 if st.sidebar.button("Se déconnecter"):
     st.session_state["authentifie"] = False
@@ -69,7 +69,7 @@ if st.sidebar.button("Se déconnecter"):
 # ESPACE 1 : LA FERME (SOKODÉ) - SAISIE UNIQUEMENT
 # =====================================================================
 if st.session_state["role"] == "ferme":
-    st.title("📋 Interface de Saisie Quotidienne (Sokodé)")
+    st.title("📋 Interface de saisie quotidienne (Sokodé)")
     st.info("Cette interface est réservée au personnel de terrain pour la déclaration des opérations du jour.")
     
     date_jour = st.date_input("Date du relevé", datetime.now())
@@ -80,7 +80,7 @@ if st.session_state["role"] == "ferme":
     
     # Formulaire de ramassage (uniquement pour pondeuses)
     if "Pondeuses" in type_elevage:
-        st.subheader("🥚 1. Déclaration du Ramassage (En plateaux)")
+        st.subheader("🥚 1. Déclaration du ramassage (En plateaux)")
         col_c1, col_c2, col_c3 = st.columns(3)
         saisie_oeufs = {}
         with col_c1:
@@ -96,7 +96,7 @@ if st.session_state["role"] == "ferme":
     st.divider()
     
     # Formulaire Événements & Stocks
-    st.subheader("📦 2. Déclaration des Événements & Sorties de Stock")
+    st.subheader("📦 2. Déclaration des événements et des sorties de stock")
     col_s1, col_s2, col_s3 = st.columns(3)
     
     with col_s1:
@@ -111,7 +111,7 @@ if st.session_state["role"] == "ferme":
     st.divider()
     
     # Génération du Rapport pour le Chauffeur
-    st.subheader("📄 3. Génération du Rapport Quotidien (Bordereau Chauffeur)")
+    st.subheader("📄 3. Génération du rapport quotidien (Bordereau chauffeur)")
     
     def generer_rapport_terrain():
         pdf = FPDF()
@@ -131,7 +131,7 @@ if st.session_state["role"] == "ferme":
         pdf.ln(5)
         
         pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 10, txt="2. EVENEMENTS & STOCKS", ln=True)
+        pdf.cell(200, 10, txt="2. EVENEMENTS et STOCKS", ln=True)
         pdf.set_font("Arial", "", 11)
         pdf.cell(200, 8, txt=f"- Mortalite : {mortalite} sujets", ln=True)
         pdf.cell(200, 8, txt=f"- Aliment ({type_aliment}) : {aliment_consomme} kg", ln=True)
@@ -143,19 +143,19 @@ if st.session_state["role"] == "ferme":
     if st.button("💾 Enregistrer et Générer le rapport"):
         st.success("Données enregistrées et envoyées à la Direction (Lomé) !")
         pdf_report = generer_rapport_terrain()
-        st.download_button(label="📥 Télécharger le bordereau pour le Chauffeur (PDF)", data=pdf_report, file_name=f"Rapport_{date_jour}.pdf", mime="application/pdf")
+        st.download_button(label="📥 Télécharger le bordereau pour le chauffeur (PDF)", data=pdf_report, file_name=f"Rapport_{date_jour}.pdf", mime="application/pdf")
 
 
 # =====================================================================
 # ESPACE 2 : LA DIRECTION (LOMÉ) - ANALYSE ET FINANCE
 # =====================================================================
 elif st.session_state["role"] == "direction":
-    st.title("📊 Tableau de Bord Stratégique (Lomé)")
+    st.title("📊 Tableau de Bord (Lomé)")
     st.markdown("Vue analytique, suivi financier et alertes intelligentes.")
     st.divider()
     
     # 1. MOTEUR D'ALERTES
-    st.header("🚨 Moteur d'Alertes et Écarts (Théorie vs Réalité)")
+    st.header("🚨 Moteur d'alertes et écarts (théorie vs réalité)")
     st.caption("Ce module compare les données saisies par la ferme avec les objectifs du business plan.")
     
     a1, a2, a3 = st.columns(3)
@@ -167,7 +167,7 @@ elif st.session_state["role"] == "direction":
     st.divider()
     
     # 2. VUE DÉTAILLÉE DU MAGASIN
-    st.header("🏭 État du Magasin & Intrants (Nomenclature complète)")
+    st.header("🏭 État du magasin et intrants (Nomenclature complète)")
     col_st1, col_st2, col_st3 = st.columns(3)
     col_st1.metric("Maïs", "12.5 Tonnes", "OK", delta_color="normal")
     col_st2.metric("Tourteaux de Soja", "1.2 Tonnes", "-100 kg (Critique)", delta_color="inverse")
@@ -177,7 +177,7 @@ elif st.session_state["role"] == "direction":
     st.divider()
     
     # 3. MODULE FINANCIER CALIBRÉ
-    st.header("💰 Module Financier : Valorisation de la Production")
+    st.header("💰 Module financier : valorisation de la production")
     st.write("Ce simulateur calcule le CA exact en fonction des calibres et du type de client (Grossiste vs Détaillant).")
     
     type_client = st.radio("Grille tarifaire à appliquer :", ["Grossiste", "Détaillant"], horizontal=True)
@@ -202,7 +202,7 @@ elif st.session_state["role"] == "direction":
     st.divider()
     
     # 4. GESTION DES CRÉANCES (Identique à la V1 mais réservé à la Direction)
-    st.header("📝 Gestion des Créances et Trésorerie")
+    st.header("📝 Gestion des créances et trésorerie")
     with st.form("formulaire_creance", clear_on_submit=True):
         col_f1, col_f2 = st.columns(2)
         nouveau_client = col_f1.text_input("Nom du Client / Acheteur")
