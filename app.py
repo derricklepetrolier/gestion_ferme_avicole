@@ -262,11 +262,10 @@ elif st.session_state["role"] == "direction":
     type_client = st.radio("Grille tarifaire de référence :", ["Grossiste", "Détaillant"], horizontal=True)
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
-    # Sélection des clients multiples (jusqu'à 6 clients réguliers comme demandé en réunion)
     clients_disponibles = ["Client 01 - AGROSATH", "Client 02 - JOSUE", "Client 03 - BOUTIQUE CENTRALE", "Client 04 - MARCHE CENTRAL", "Client 05 - PASSAGER 1", "Client 06 - PASSAGER 2"]
     client_actif = st.selectbox("Sélectionner le client pour cette saisie de vente :", clients_disponibles)
     
-    st.subheader(f 경로 := f"Plateaux vendus pour {client_actif} :")
+    st.subheader(f"Plateaux vendus pour {client_actif} :")
     cols_vente = st.columns(6)
     ventes = {}
     
@@ -276,7 +275,7 @@ elif st.session_state["role"] == "direction":
             ventes[cal] = st.number_input(f"{cal}", value=val_def, min_value=0, step=5, key=f"v_{cal}")
             st.caption(f"{grille_active[cal]} F/pl")
             
-    ca_ client = sum(ventes[cal] * grille_active[cal] for cal in calibres)
+    ca_client = sum(ventes[cal] * grille_active[cal] for cal in calibres)
     st.markdown(f"<h3 style='color: #4CAF50;'>Chiffre d'Affaires pour {client_actif} : {ca_client:,.0f} FCFA</h3>", unsafe_allow_html=True)
     
     st.divider()
