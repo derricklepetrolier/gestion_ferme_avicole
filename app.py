@@ -44,7 +44,7 @@ cols_ferme = [
 cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû FCFA", "Statut"]
 cols_stock = ["Intrant", "Quantite", "Unite", "Seuil Alerte"]
 
-# --- 3. GESTION PERSISTANTE DE LA CONNEXION (ANTI-DÉCONNEXION) ---
+# --- 3. GESTION PERSISTANTE DE LA CONNEXION ---
 params = st.query_params
 role_url = params.get("role", "")
 
@@ -103,7 +103,9 @@ if st.session_state["role"] == "ferme":
     st.title("Interface de saisie quotidienne Sokode")
     st.info("Les donnees validees ici sont transmises en temps reel a la direction.")
     
-    date_jour = st.date_input("Date du releve", datetime.now())
+    # CORRECTION : La date ne peut pas aller au-delà d'aujourd'hui
+    date_jour = st.date_input("Date du releve", datetime.now(), max_value=datetime.now().date())
+    
     batiment = st.selectbox("Batiment ou bande concernee", liste_bandes)
     type_elevage = st.selectbox("Type d'elevage", races)
     
@@ -290,81 +292,4 @@ elif st.session_state["role"] == "direction":
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
     clients_disponibles = ["Client 01 AGROSATH", "Client 02 JOSUE", "Client 03 BOUTIQUE CENTRALE", "Client 04 MARCHE CENTRAL", "Client 05 PASSAGER 1", "Client 06 PASSAGER 2"]
-    client_actif = st.selectbox("Selectionner le client pour cette saisie de vente :", clients_disponibles)
-    
-    st.subheader(f"Plateaux vendus pour {client_actif} :")
-    cols_vente = st.columns(6)
-    ventes = {}
-    
-    for i, cal in enumerate(calibres):
-        with cols_vente[i]:
-            val_def = 20 if cal == "Gros" else 0
-            ventes[cal] = st.number_input(f"{cal}", value=val_def, min_value=0, step=5, key=f"v_{cal}")
-            st.caption(f"{grille_active[cal]} F/pl")
-            
-    ca_client = sum(ventes[cal] * grille_active[cal] for cal in calibres)
-    st.markdown(f"<h3 style='color: #4CAF50;'>Chiffre d'affaires pour {client_actif} : {ca_client:,.0f} FCFA</h3>", unsafe_allow_html=True)
-    
-    st.divider()
-    
-    st.header("Gestion des creances et tresorerie")
-    with st.form("formulaire_creance", clear_on_submit=True):
-        col_f1, col_f2, col_f3 = st.columns(3)
-        date_op = col_f1.date_input("Date de l'operation", datetime.now())
-        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles)
-        nouveau_type = col_f3.selectbox("Type de vente", ["Oeufs", "Poules Reforme", "Fiente Engrais", "Poulets de chair"])
-        
-        col_f4, col_f5 = st.columns(2)
-        nouveau_montant = col_f4.number_input("Montant Dû ou Paye FCFA", min_value=0, step=5000)
-        nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Paye Cash"])
-        
-        if st.form_submit_button("Enregistrer l'operation financière"):
-            with st.spinner("Enregistrement de l'operation..."):
-                heure_op = datetime.now().strftime("%H:%M")
-                nouvelle_ligne = pd.DataFrame({
-                    "Date": [date_op.strftime("%d/%m/%Y")],
-                    "Heure": [heure_op],
-                    "Client": [nouveau_client],
-                    "Type Vente": [nouveau_type],
-                    "Montant Dû FCFA": [nouveau_montant],
-                    "Statut": [nouveau_statut]
-                })
-                df_creances_maj = pd.concat([df_creances, nouvelle_ligne], ignore_index=True)
-                conn.update(worksheet="Creances", data=df_creances_maj)
-            st.success("Operation enregistree dans la base de donnees !")
-            st.rerun()
-    
-    if not df_creances.empty:
-        st.dataframe(df_creances, use_container_width=True)
-
-    st.divider()
-
-    st.header("Base de donnees historique et etats recapitulatifs")
-
-    if not df_hist.empty:
-        for col_num in ["Total Plateaux", "Casses", "Mortalite", "Aliment kg"]:
-            df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
-
-        filtre_bat = st.selectbox("Filtrer l'etat par batiment :", ["Tous les batiments"] + liste_bandes)
-        if filtre_bat != "Tous les batiments":
-            df_affiche = df_hist[df_hist["Batiment"] == filtre_bat]
-        else:
-            df_affiche = df_hist
-
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Total Plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
-        k2.metric("Total Casses pertes", f"{int(df_affiche['Casses'].sum())} pl.")
-        k3.metric("Mortalite cumulee", f"{int(df_affiche['Mortalite'].sum())} sujets")
-        k4.metric("Aliment total consomme", f"{df_affiche['Aliment kg'].sum():,.1f} kg")
-
-        st.dataframe(df_affiche, use_container_width=True)
-
-        csv_hist = df_affiche.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Tirer l'etat complet pour Excel CSV",
-            data=csv_hist,
-            file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("L'historique s'affichera ici des que Sokode aura effectue sa premiere saisie.")
+    client_actif = st.selectbox("Selectionner le client pour cette saisie de vente :", clients_disponibles
