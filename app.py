@@ -5,7 +5,7 @@ from fpdf import FPDF
 from streamlit_gsheets import GSheetsConnection
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="NGA Togo - Production", layout="wide", page_icon="🐓")
+st.set_page_config(page_title="NGA AgroGestion", layout="wide", page_icon="🐓")
 
 # --- MASQUER L'INTERFACE STANDARD STREAMLIT ---
 cacher_menu_style = """
@@ -18,7 +18,7 @@ cacher_menu_style = """
         """
 st.markdown(cacher_menu_style, unsafe_allow_html=True)
 
-# --- 2. CONNEXION À LA BASE DE DONNÉES GOOGLE SHEETS ---
+# --- 2. CONNEXION À LA BASE DE DONNÉES CENTRALE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def charger_donnees(onglet, colonnes_defaut):
@@ -38,8 +38,9 @@ cols_ferme = [
     "Type Aliment", "Gasoil (L)", "Pharmacie"
 ]
 cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", "Statut"]
+cols_stock = ["Intrant", "Quantité", "Unité", "Seuil Alerte"]
 
-# --- 3. SYSTÈME DE CONNEXION (DOUBLE PROFIL) ---
+# --- 3. SYSTÈME DE CONNEXION STABLE (ANTI-DÉCONNEXION) ---
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
     st.session_state["role"] = ""
@@ -86,7 +87,7 @@ if st.sidebar.button("Se déconnecter"):
 # =====================================================================
 if st.session_state["role"] == "ferme":
     st.title("📋 Interface de saisie quotidienne (Sokodé)")
-    st.info("Les données validées ici sont enregistrées directement dans la base centrale Google Sheets.")
+    st.info("Les données validées ici sont transmises en temps réel à la direction.")
     
     date_jour = st.date_input("Date du relevé", datetime.now())
     batiment = st.selectbox("Bâtiment / Bande concernée", liste_bandes)
@@ -174,8 +175,8 @@ if st.session_state["role"] == "ferme":
         
         return bytes(pdf.output(dest='S').encode('latin-1', 'replace'))
 
-    if st.button("💾 Enregistrer dans la base centrale et Générer le rapport"):
-        with st.spinner("Enregistrement sécurisé sur Google Sheets en cours..."):
+    if st.button("💾 Enregistrer et Générer le rapport"):
+        with st.spinner("Enregistrement en cours..."):
             heure_saisie = datetime.now().strftime("%H:%M")
             total_plateaux = sum(saisie_oeufs.values())
             
@@ -204,7 +205,7 @@ if st.session_state["role"] == "ferme":
             df_mis_a_jour = pd.concat([df_existant, nouvelle_entree], ignore_index=True)
             conn.update(worksheet="Historique_Ferme", data=df_mis_a_jour)
             
-        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} sauvegardé définitivement et transmis à Lomé !")
+        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} enregistré et transmis à Lomé !")
         pdf_report = generer_rapport_terrain(heure_saisie)
         st.download_button(
             label="📥 Télécharger le bordereau pour le chauffeur (PDF)",
@@ -222,12 +223,13 @@ elif st.session_state["role"] == "direction":
     
     df_hist = charger_donnees("Historique_Ferme", cols_ferme)
     df_creances = charger_donnees("Creances", cols_creances)
+    df_stock = charger_donnees("Stock", cols_stock)
     
     if not df_hist.empty:
         derniere_ligne = df_hist.iloc[-1]
         st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** — **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, Taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort(s))")
     else:
-        st.warning("Aucun relevé n'a encore été enregistré dans la base Google Sheets.")
+        st.warning("Aucun relevé n'a encore été enregistré dans la base centrale.")
         
     st.divider()
     
@@ -240,13 +242,38 @@ elif st.session_state["role"] == "direction":
     
     st.divider()
     
-    # 2. VUE DÉTAILLÉE DU MAGASIN
-    st.header("🏭 État du magasin et intrants")
-    col_st1, col_st2, col_st3 = st.columns(3)
-    col_st1.metric("Maïs", "12.5 Tonnes", "OK")
-    col_st2.metric("Tourteaux de Soja", "1.2 Tonnes", "-100 kg (Critique)", delta_color="inverse")
-    col_st3.metric("Son Cubé / Concentrés", "4.0 Tonnes", "OK")
+    # 2. VUE DÉTAILLÉE DU MAGASIN ET MISE À JOUR PAR LA DIRECTION
+    st.header("🏭 État du magasin et gestion des stocks")
     
+    if df_stock.empty:
+        df_stock = pd.DataFrame({
+            "Intrant": ["Maïs", "Tourteaux de Soja", "Son Cubé / Concentrés", "Gasoil"],
+            "Quantité": [12.5, 1.2, 4.0, 45.0],
+            "Unité": ["Tonnes", "Tonnes", "Tonnes", "Litres"],
+            "Seuil Alerte": [5.0, 1.5, 1.0, 50.0]
+        })
+
+    cols_met = st.columns(len(df_stock))
+    for idx, row in df_stock.iterrows():
+        with cols_met[idx % len(cols_met)]:
+            delta_val = "OK" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "Critique (Stock Bas)"
+            delta_col = "normal" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "inverse"
+            cols_met[idx % len(cols_met)].metric(row["Intrant"], f"{row['Quantité']} {row['Unité']}", delta_val, delta_color=delta_col)
+
+    with st.expander("⚙️ Modifier ou réapprovisionner le stock (Réservé Direction)"):
+        with st.form("form_update_stock"):
+            st.write("Mettez à jour les quantités disponibles en stock :")
+            updated_rows = []
+            for idx, row in df_stock.iterrows():
+                q_mod = st.number_input(f"Quantité pour {row['Intrant']} ({row['Unité']})", value=float(row["Quantité"]), step=0.5, key=f"stk_{idx}")
+                updated_rows.append({"Intrant": row["Intrant"], "Quantité": q_mod, "Unité": row["Unité"], "Seuil Alerte": row["Seuil Alerte"]})
+            
+            if st.form_submit_button("💾 Enregistrer les modifications du stock"):
+                df_stock_nouveau = pd.DataFrame(updated_rows)
+                conn.update(worksheet="Stock", data=df_stock_nouveau)
+                st.success("Stocks mis à jour avec succès !")
+                st.rerun()
+
     st.divider()
     
     # 3. MODULE FINANCIER & MULTI-CLIENTS
@@ -284,8 +311,8 @@ elif st.session_state["role"] == "direction":
         nouveau_montant = col_f4.number_input("Montant Dû ou Payé (FCFA)", min_value=0, step=5000)
         nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé Cash"])
         
-        if st.form_submit_button("➕ Enregistrer l'opération sur Google Sheets"):
-            with st.spinner("Sauvegarde de l'opération financière..."):
+        if st.form_submit_button("➕ Enregistrer l'opération financière"):
+            with st.spinner("Enregistrement de l'opération..."):
                 heure_op = datetime.now().strftime("%H:%M")
                 nouvelle_ligne = pd.DataFrame({
                     "Date": [date_op.strftime("%d/%m/%Y")],
@@ -309,7 +336,6 @@ elif st.session_state["role"] == "direction":
     st.header("🗄️ Base de données historique & États récapitulatifs (Sokodé)")
 
     if not df_hist.empty:
-        # Conversion sécurisée en numérique pour les calculs de totaux
         for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
             df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
 
@@ -332,7 +358,7 @@ elif st.session_state["role"] == "direction":
             label="📊 Tirer l'état complet pour Excel (CSV)",
             data=csv_hist,
             file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
+            mime="text/css" # mime type correct
         )
     else:
         st.info("L'historique s'affichera ici dès que Sokodé aura effectué sa première saisie.")
