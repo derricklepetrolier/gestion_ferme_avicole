@@ -1,4 +1,7 @@
 import streamlit as st
+import time
+import hmac
+import hashlib
 import pandas as pd
 from datetime import datetime
 from fpdf import FPDF
@@ -54,26 +57,57 @@ cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", 
 cols_stock = ["Intrant", "Quantité", "Unité", "Seuil Alerte"]
 cols_params = ["Paramètre", "Valeur"]
 
-# --- 3. GESTION PERSISTANTE ET SECURISEE DE LA CONNEXION ---
-TOKENS_SESSION = {
-    "skd_84a9f2": "ferme",
-    "lme_91f2c7": "direction"
-}
-ROLE_TO_TOKEN = {v: k for k, v in TOKENS_SESSION.items()}
+# --- 3. GESTION PERSISTANTE ET SECURISEE DE LA CONNEXION (AVEC EXPIRATION) ---
+DUREE_INACTIVITE_MINUTES = 60  # Modifiez cette valeur selon vos besoins (ex: 30, 60, 120)
+CLE_SECRETE_SESSION = "NGA_Togo_2026_Cle_Secrete_91f2c7"
+
+def generer_jeton(role, timestamp=None):
+    ts = int(timestamp if timestamp is not None else time.time())
+    message = f"{role}.{ts}".encode("utf-8")
+    signature = hmac.new(CLE_SECRETE_SESSION.encode("utf-8"), message, hashlib.sha256).hexdigest()[:16]
+    return f"{role}.{ts}.{signature}"
+
+def verifier_jeton(jeton):
+    try:
+        role, ts_str, sig_recue = jeton.split(".")
+        if role not in ["ferme", "direction"]:
+            return None, False
+        ts = int(ts_str)
+        message = f"{role}.{ts}".encode("utf-8")
+        sig_attendue = hmac.new(CLE_SECRETE_SESSION.encode("utf-8"), message, hashlib.sha256).hexdigest()[:16]
+        if not hmac.compare_digest(sig_recue, sig_attendue):
+            return None, False
+        if (time.time() - ts) > (DUREE_INACTIVITE_MINUTES * 60):
+            return None, True  # Jeton expiré
+        return role, False
+    except Exception:
+        return None, False
 
 params = st.query_params
 session_token = params.get("session", "")
+session_expiree = False
 
-if "authentifie" not in st.session_state:
-    if session_token in TOKENS_SESSION:
+if session_token:
+    role_valide, est_expire = verifier_jeton(session_token)
+    if role_valide:
         st.session_state["authentifie"] = True
-        st.session_state["role"] = TOKENS_SESSION[session_token]
+        st.session_state["role"] = role_valide
+        # Réinitialise le compteur d'inactivité à chaque interaction
+        st.query_params["session"] = generer_jeton(role_valide)
     else:
         st.session_state["authentifie"] = False
         st.session_state["role"] = ""
+        st.query_params.clear()
+        if est_expire:
+            session_expiree = True
+else:
+    st.session_state["authentifie"] = False
+    st.session_state["role"] = ""
 
 if not st.session_state["authentifie"]:
     st.title("🥚🐓 NGA AgroGestion")
+    if session_expiree:
+        st.warning(f"⏱️ Votre session a expiré après {DUREE_INACTIVITE_MINUTES} minutes d'inactivité. Veuillez vous reconnecter.")
     st.write("Veuillez vous connecter avec vos identifiants de site.")
     
     identifiant = st.text_input("Identifiant")
@@ -83,12 +117,12 @@ if not st.session_state["authentifie"]:
         if identifiant == "Sokode" and mot_de_passe == "Terrain2026!":
             st.session_state["authentifie"] = True
             st.session_state["role"] = "ferme"
-            st.query_params["session"] = ROLE_TO_TOKEN["ferme"]
+            st.query_params["session"] = generer_jeton("ferme")
             st.rerun()
         elif identifiant == "Lome" and mot_de_passe == "Direction2026!":
             st.session_state["authentifie"] = True
             st.session_state["role"] = "direction"
-            st.query_params["session"] = ROLE_TO_TOKEN["direction"]
+            st.query_params["session"] = generer_jeton("direction")
             st.rerun()
         else:
             st.error("Identifiant ou mot de passe incorrect.")
