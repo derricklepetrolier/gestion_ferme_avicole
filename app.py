@@ -292,4 +292,4 @@ elif st.session_state["role"] == "direction":
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
     clients_disponibles = ["Client 01 AGROSATH", "Client 02 JOSUE", "Client 03 BOUTIQUE CENTRALE", "Client 04 MARCHE CENTRAL", "Client 05 PASSAGER 1", "Client 06 PASSAGER 2"]
-    client_actif = st.selectbox("Selectionner le client pour cette saisie de vente :", clients_disponibles
+    client_actif = st.selectbox("Selectionner le client pour cette saisie de vente :", clients_disponibles)
