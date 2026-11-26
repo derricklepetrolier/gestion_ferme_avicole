@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from fpdf import FPDF
+from streamlit_gsheets import GSheetsConnection
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="NGA Togo - V2", layout="wide", page_icon="🐓")
+st.set_page_config(page_title="NGA Togo - Production", layout="wide", page_icon="🐓")
 
 # --- MASQUER L'INTERFACE STANDARD STREAMLIT ---
 cacher_menu_style = """
@@ -17,36 +18,26 @@ cacher_menu_style = """
         """
 st.markdown(cacher_menu_style, unsafe_allow_html=True)
 
-# --- 2. INITIALISATION DE LA MÉMOIRE (Base de données simulée) ---
-if "base_creances" not in st.session_state:
-    st.session_state["base_creances"] = pd.DataFrame({
-        "Date": ["03/11/2026", "04/11/2026"],
-        "Client": ["AGROSATH", "JOSUE"],
-        "Type Vente": ["Œufs", "Œufs"],
-        "Montant Dû (FCFA)": [350000, 125000],
-        "Statut": ["En attente", "Retard"]
-    })
+# --- 2. CONNEXION À LA BASE DE DONNÉES GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-if "historique_ferme" not in st.session_state:
-    st.session_state["historique_ferme"] = pd.DataFrame({
-        "Date": ["03/11/2026", "04/11/2026"],
-        "Bâtiment": ["Bande 01 (Kadjolo)", "Bande 01 (Kadjolo)"],
-        "Élevage": ["Pondeuses (Isa Brown/Leghons)", "Pondeuses (Isa Brown/Leghons)"],
-        "PIWI": [0, 0],
-        "Petits": [4, 5],
-        "Moyens": [18, 20],
-        "Gros": [75, 80],
-        "Super Gros": [12, 15],
-        "Cassés": [2, 3],
-        "Surplus (Œufs vrac)": [0, 5],
-        "Total Plateaux": [111, 123],
-        "Taux de Ponte (%)": ["74.0%", "82.0%"],
-        "Mortalité": [1, 4],
-        "Aliment (kg)": [1140.0, 1150.0],
-        "Type Aliment": ["Ponte Phase 1", "Ponte Phase 1"],
-        "Gasoil (L)": [10.0, 15.0],
-        "Pharmacie": ["RAS", "Vitamines"]
-    })
+def charger_donnees(onglet, colonnes_defaut):
+    try:
+        df = conn.read(worksheet=onglet, ttl=0)
+        df = df.dropna(how="all")
+        if df.empty:
+            return pd.DataFrame(columns=colonnes_defaut)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=colonnes_defaut)
+
+cols_ferme = [
+    "Date", "Heure Saisie", "Bâtiment", "Élevage", "PIWI", "Petits", 
+    "Moyens", "Gros", "Super Gros", "Cassés", "Surplus (Œufs vrac)", 
+    "Total Plateaux", "Taux de Ponte (%)", "Mortalité", "Aliment (kg)", 
+    "Type Aliment", "Gasoil (L)", "Pharmacie"
+]
+cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", "Statut"]
 
 # --- 3. SYSTÈME DE CONNEXION (DOUBLE PROFIL) ---
 if "authentifie" not in st.session_state:
@@ -95,7 +86,7 @@ if st.sidebar.button("Se déconnecter"):
 # =====================================================================
 if st.session_state["role"] == "ferme":
     st.title("📋 Interface de saisie quotidienne (Sokodé)")
-    st.info("Cette interface est réservée au personnel de terrain pour la déclaration des opérations du jour.")
+    st.info("Les données validées ici sont enregistrées directement dans la base centrale Google Sheets.")
     
     date_jour = st.date_input("Date du relevé", datetime.now())
     batiment = st.selectbox("Bâtiment / Bande concernée", liste_bandes)
@@ -108,10 +99,8 @@ if st.session_state["role"] == "ferme":
     taux_ponte_calc = 0.0
     surplus_oeufs = 0
     
-    # Formulaire de ramassage (uniquement pour pondeuses)
     if "Pondeuses" in type_elevage:
         st.subheader("🥚 1. Déclaration du ramassage & Calcul du Taux de Ponte")
-        
         effectif_poules = st.number_input("Effectif total des sujets vivants dans la bande", min_value=1, value=5000, step=100)
         
         col_c1, col_c2, col_c3 = st.columns(3)
@@ -127,7 +116,6 @@ if st.session_state["role"] == "ferme":
             
         surplus_oeufs = st.number_input("Surplus (Nombre d'œufs en vrac / hors plateaux)", min_value=0, step=1)
 
-        # Calcul automatique du taux de ponte
         total_plateaux = sum(saisie_oeufs.values())
         total_oeufs_vrac = (total_plateaux * 30) + surplus_oeufs
         taux_ponte_calc = (total_oeufs_vrac / effectif_poules) * 100 if effectif_poules > 0 else 0.0
@@ -135,7 +123,6 @@ if st.session_state["role"] == "ferme":
         st.markdown(f"### 📈 Taux de ponte calculé : **{taux_ponte_calc:.1f}%** ({total_oeufs_vrac} œufs ramassés pour {effectif_poules} poules)")
         st.divider()
     
-    # Formulaire Événements & Stocks
     st.subheader("📦 2. Déclaration des événements et des sorties de stock")
     col_s1, col_s2, col_s3 = st.columns(3)
     
@@ -149,8 +136,6 @@ if st.session_state["role"] == "ferme":
         veto = st.text_input("Produits Vétérinaires utilisés (Optionnel)")
         
     st.divider()
-    
-    # Génération du Rapport pour le Chauffeur & Enregistrement en Base
     st.subheader("📄 3. Génération du rapport quotidien (Bordereau chauffeur)")
     
     def generer_rapport_terrain(heure_actuelle):
@@ -189,33 +174,37 @@ if st.session_state["role"] == "ferme":
         
         return bytes(pdf.output(dest='S').encode('latin-1', 'replace'))
 
-    if st.button("💾 Enregistrer et Générer le rapport"):
-        heure_saisie = datetime.now().strftime("%H:%M")
-        total_plateaux = sum(saisie_oeufs.values())
-        nouvelle_entree = pd.DataFrame({
-            "Date": [date_jour.strftime("%d/%m/%Y")],
-            "Heure Saisie": [heure_saisie],
-            "Bâtiment": [batiment],
-            "Élevage": [type_elevage],
-            "PIWI": [saisie_oeufs["PIWI"]],
-            "Petits": [saisie_oeufs["Petits"]],
-            "Moyens": [saisie_oeufs["Moyens"]],
-            "Gros": [saisie_oeufs["Gros"]],
-            "Super Gros": [saisie_oeufs["Super Gros"]],
-            "Cassés": [saisie_oeufs["Cassés"]],
-            "Surplus (Œufs vrac)": [surplus_oeufs],
-            "Total Plateaux": [total_plateaux],
-            "Taux de Ponte (%)": [f"{taux_ponte_calc:.1f}%"],
-            "Mortalité": [mortalite],
-            "Aliment (kg)": [aliment_consomme],
-            "Type Aliment": [type_aliment],
-            "Gasoil (L)": [gasoil],
-            "Pharmacie": [veto if veto else "RAS"]
-        })
-        
-        st.session_state["historique_ferme"] = pd.concat([st.session_state["historique_ferme"], nouvelle_entree], ignore_index=True)
-        
-        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} enregistré et transmis à Lomé !")
+    if st.button("💾 Enregistrer dans la base centrale et Générer le rapport"):
+        with st.spinner("Enregistrement sécurisé sur Google Sheets en cours..."):
+            heure_saisie = datetime.now().strftime("%H:%M")
+            total_plateaux = sum(saisie_oeufs.values())
+            
+            df_existant = charger_donnees("Historique_Ferme", cols_ferme)
+            nouvelle_entree = pd.DataFrame({
+                "Date": [date_jour.strftime("%d/%m/%Y")],
+                "Heure Saisie": [heure_saisie],
+                "Bâtiment": [batiment],
+                "Élevage": [type_elevage],
+                "PIWI": [saisie_oeufs["PIWI"]],
+                "Petits": [saisie_oeufs["Petits"]],
+                "Moyens": [saisie_oeufs["Moyens"]],
+                "Gros": [saisie_oeufs["Gros"]],
+                "Super Gros": [saisie_oeufs["Super Gros"]],
+                "Cassés": [saisie_oeufs["Cassés"]],
+                "Surplus (Œufs vrac)": [surplus_oeufs],
+                "Total Plateaux": [total_plateaux],
+                "Taux de Ponte (%)": [f"{taux_ponte_calc:.1f}%"],
+                "Mortalité": [mortalite],
+                "Aliment (kg)": [aliment_consomme],
+                "Type Aliment": [type_aliment],
+                "Gasoil (L)": [gasoil],
+                "Pharmacie": [veto if veto else "RAS"]
+            })
+            
+            df_mis_a_jour = pd.concat([df_existant, nouvelle_entree], ignore_index=True)
+            conn.update(worksheet="Historique_Ferme", data=df_mis_a_jour)
+            
+        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} sauvegardé définitivement et transmis à Lomé !")
         pdf_report = generer_rapport_terrain(heure_saisie)
         st.download_button(
             label="📥 Télécharger le bordereau pour le chauffeur (PDF)",
@@ -231,10 +220,15 @@ if st.session_state["role"] == "ferme":
 elif st.session_state["role"] == "direction":
     st.title("📊 Tableau de Bord (Lomé)")
     
-    if not st.session_state["historique_ferme"].empty:
-        derniere_ligne = st.session_state["historique_ferme"].iloc[-1]
-        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** — **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, Taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort(s))")
+    df_hist = charger_donnees("Historique_Ferme", cols_ferme)
+    df_creances = charger_donnees("Creances", cols_creances)
     
+    if not df_hist.empty:
+        derniere_ligne = df_hist.iloc[-1]
+        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** — **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, Taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort(s))")
+    else:
+        st.warning("Aucun relevé n'a encore été enregistré dans la base Google Sheets.")
+        
     st.divider()
     
     # 1. MOTEUR D'ALERTES
@@ -257,8 +251,6 @@ elif st.session_state["role"] == "direction":
     
     # 3. MODULE FINANCIER & MULTI-CLIENTS
     st.header("💰 Module financier & Ventes multi-clients")
-    st.write("Sélectionnez la grille tarifaire et renseignez les ventes par client et par calibre.")
-    
     type_client = st.radio("Grille tarifaire de référence :", ["Grossiste", "Détaillant"], horizontal=True)
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
@@ -292,44 +284,49 @@ elif st.session_state["role"] == "direction":
         nouveau_montant = col_f4.number_input("Montant Dû ou Payé (FCFA)", min_value=0, step=5000)
         nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé Cash"])
         
-        if st.form_submit_button("➕ Ajouter l'opération financière"):
-            heure_op = datetime.now().strftime("%H:%M")
-            nouvelle_ligne = pd.DataFrame({
-                "Date": [date_op.strftime("%d/%m/%Y")],
-                "Heure": [heure_op],
-                "Client": [nouveau_client],
-                "Type Vente": [nouveau_type],
-                "Montant Dû (FCFA)": [nouveau_montant],
-                "Statut": [nouveau_statut]
-            })
-            st.session_state["base_creances"] = pd.concat([st.session_state["base_creances"], nouvelle_ligne], ignore_index=True)
-            st.success("Opération financière enregistrée.")
+        if st.form_submit_button("➕ Enregistrer l'opération sur Google Sheets"):
+            with st.spinner("Sauvegarde de l'opération financière..."):
+                heure_op = datetime.now().strftime("%H:%M")
+                nouvelle_ligne = pd.DataFrame({
+                    "Date": [date_op.strftime("%d/%m/%Y")],
+                    "Heure": [heure_op],
+                    "Client": [nouveau_client],
+                    "Type Vente": [nouveau_type],
+                    "Montant Dû (FCFA)": [nouveau_montant],
+                    "Statut": [nouveau_statut]
+                })
+                df_creances_maj = pd.concat([df_creances, nouvelle_ligne], ignore_index=True)
+                conn.update(worksheet="Creances", data=df_creances_maj)
+            st.success("Opération enregistrée dans la base de données !")
+            st.rerun()
     
-    if not st.session_state["base_creances"].empty:
-        st.dataframe(st.session_state["base_creances"], use_container_width=True)
+    if not df_creances.empty:
+        st.dataframe(df_creances, use_container_width=True)
 
     st.divider()
 
     # 5. BASE DE DONNÉES HISTORIQUE & ÉTATS RÉCAPITULATIFS
     st.header("🗄️ Base de données historique & États récapitulatifs (Sokodé)")
-    df_hist = st.session_state["historique_ferme"]
 
-    filtre_bat = st.selectbox("Filtrer l'état par bâtiment :", ["Tous les bâtiments"] + liste_bandes)
-    if filtre_bat != "Tous les bâtiments":
-        df_affiche = df_hist[df_hist["Bâtiment"] == filtre_bat]
-    else:
-        df_affiche = df_hist
+    if not df_hist.empty:
+        # Conversion sécurisée en numérique pour les calculs de totaux
+        for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
+            df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total Plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
-    k2.metric("Total Cassés (Pertes)", f"{int(df_affiche['Cassés'].sum())} pl.")
-    k3.metric("Mortalité cumulée", f"{int(df_affiche['Mortalité'].sum())} sujets")
-    k4.metric("Aliment total consommé", f"{df_affiche['Aliment (kg)'].sum():,.1f} kg")
+        filtre_bat = st.selectbox("Filtrer l'état par bâtiment :", ["Tous les bâtiments"] + liste_bandes)
+        if filtre_bat != "Tous les bâtiments":
+            df_affiche = df_hist[df_hist["Bâtiment"] == filtre_bat]
+        else:
+            df_affiche = df_hist
 
-    st.dataframe(df_affiche, use_container_width=True)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total Plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
+        k2.metric("Total Cassés (Pertes)", f"{int(df_affiche['Cassés'].sum())} pl.")
+        k3.metric("Mortalité cumulée", f"{int(df_affiche['Mortalité'].sum())} sujets")
+        k4.metric("Aliment total consommé", f"{df_affiche['Aliment (kg)'].sum():,.1f} kg")
 
-    col_exp1, col_exp2 = st.columns(2)
-    with col_exp1:
+        st.dataframe(df_affiche, use_container_width=True)
+
         csv_hist = df_affiche.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📊 Tirer l'état complet pour Excel (CSV)",
@@ -337,3 +334,5 @@ elif st.session_state["role"] == "direction":
             file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
+    else:
+        st.info("L'historique s'affichera ici dès que Sokodé aura effectué sa première saisie.")
