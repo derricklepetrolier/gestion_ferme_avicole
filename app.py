@@ -30,12 +30,13 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def charger_donnees(onglet, colonnes_defaut):
     try:
-        df = conn.read(worksheet=onglet, ttl=0)
+        df = conn.read(worksheet=onglet, ttl=60)
         df = df.dropna(how="all")
         if df.empty:
             return pd.DataFrame(columns=colonnes_defaut)
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Erreur de lecture sur l'onglet {onglet} (patientez quelques secondes et actualisez) : {e}")
         return pd.DataFrame(columns=colonnes_defaut)
 
 def parse_float(val, defaut=0.0):
@@ -140,6 +141,9 @@ prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "
 # --- 5. MENU COMMUN ---
 st.sidebar.title("🥚🐓 NGA Togo")
 st.sidebar.info(f"Connecté en tant que : **{st.session_state['role'].upper()}**")
+if st.sidebar.button("🔄 Actualiser les données"):
+    st.cache_data.clear()
+    st.rerun()
 if st.sidebar.button("Se déconnecter"):
     st.session_state["authentifie"] = False
     st.session_state["role"] = ""
@@ -212,7 +216,10 @@ if st.session_state["role"] == "ferme":
             st.info("Saisissez l'effectif réel des sujets vivants pour afficher le taux de ponte.")
         st.divider()
     
-    st.subheader("📦 2. Déclaration des événements et des sorties de stock")
+    num_etape_stock = 2 if "Pondeuses" in type_elevage else 1
+    num_etape_pdf = 3 if "Pondeuses" in type_elevage else 2
+
+    st.subheader(f"📦 {num_etape_stock}. Déclaration des événements et des sorties de stock")
     col_s1, col_s2, col_s3 = st.columns(3)
     
     with col_s1:
@@ -226,7 +233,7 @@ if st.session_state["role"] == "ferme":
         veto = st.text_input("Produits vétérinaires utilisés (optionnel)")
         
     st.divider()
-    st.subheader("📄 3. Génération du rapport quotidien (bordereau chauffeur)")
+    st.subheader(f"📄 {num_etape_pdf}. Génération du rapport quotidien (bordereau chauffeur)")
     
     def generer_rapport_terrain(heure_actuelle):
         pdf = FPDF()
@@ -321,6 +328,8 @@ if st.session_state["role"] == "ferme":
                             qte_actuelle = parse_float(df_stock_ferme.at[idx_g, "Quantité"], 0.0)
                             df_stock_ferme.at[idx_g, "Quantité"] = max(0.0, round(qte_actuelle - gasoil, 2))
                             conn.update(worksheet="Stock", data=df_stock_ferme)
+
+                st.cache_data.clear()
                 
             st.success(f"✅ Relevé du {date_str} à {heure_saisie} enregistré et transmis à Lomé.")
             pdf_report = generer_rapport_terrain(heure_saisie)
@@ -457,8 +466,10 @@ elif st.session_state["role"] == "direction":
                 })
                 try:
                     conn.update(worksheet="Parametres", data=df_params_nouveau)
+                    st.cache_data.clear()
                     st.success("Seuils d'alerte mis à jour avec succès.")
                 except Exception:
+                    st.cache_data.clear()
                     st.warning("Seuils du magasin enregistrés. Créez l'onglet Parametres dans la base centrale pour sauvegarder durablement les seuils de ponte et de mortalité.")
                 st.rerun()
     
@@ -487,6 +498,7 @@ elif st.session_state["role"] == "direction":
             if st.form_submit_button("💾 Enregistrer les modifications du stock"):
                 df_stock_nouveau = pd.DataFrame(updated_rows)
                 conn.update(worksheet="Stock", data=df_stock_nouveau)
+                st.cache_data.clear()
                 st.success("Stocks mis à jour avec succès.")
                 st.rerun()
 
@@ -595,92 +607,4 @@ elif st.session_state["role"] == "direction":
     
     st.divider()
     
-    # --- GESTION DES CREANCES ET ENCAISSEMENTS ---
-    st.header("📝 Gestion des créances et trésorerie")
-    with st.form("formulaire_creance"):
-        col_f1, col_f2, col_f3 = st.columns(3)
-        date_op = col_f1.date_input("Date de l'opération", datetime.now(), max_value=datetime.now().date())
-        
-        index_client = clients_disponibles.index(client_actif)
-        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles, index=index_client, key=f"acheteur_{client_actif}")
-        nouveau_type = col_f3.selectbox("Type de vente", ["Œufs", "Poules réforme", "Fiente engrais", "Poulets de chair"])
-        
-        col_f4, col_f5 = st.columns(2)
-        nouveau_montant = col_f4.number_input("Montant dû ou payé (FCFA)", min_value=0, value=int(ca_client), step=5000, key=f"montant_{ca_client}")
-        nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé cash"])
-        
-        if st.form_submit_button("➕ Enregistrer l'opération financière"):
-            with st.spinner("Enregistrement de l'opération..."):
-                heure_op = datetime.now().strftime("%H:%M")
-                nouvelle_ligne = pd.DataFrame({
-                    "Date": [date_op.strftime("%d/%m/%Y")],
-                    "Heure": [heure_op],
-                    "Client": [nouveau_client],
-                    "Type Vente": [nouveau_type],
-                    "Montant Dû (FCFA)": [nouveau_montant],
-                    "Statut": [nouveau_statut]
-                })
-                df_creances_maj = pd.concat([df_creances, nouvelle_ligne], ignore_index=True)
-                conn.update(worksheet="Creances", data=df_creances_maj)
-            st.success("Opération enregistrée dans la base de données.")
-            st.rerun()
-
-    if not df_creances.empty:
-        # Encaisser ou mettre à jour le statut d'une créance existante
-        masque_impayes = ~df_creances["Statut"].astype(str).str.strip().str.lower().str.contains("pay", na=False)
-        df_impayes = df_creances[masque_impayes]
-
-        if not df_impayes.empty:
-            with st.expander("✅ Encaisser ou mettre à jour une créance en cours"):
-                options_impayes = {
-                    idx: f"{row['Date']} à {row['Heure']} | {row['Client']} | {row['Type Vente']} | {format_fcfa(parse_float(row['Montant Dû (FCFA)'], 0))} ({row['Statut']})"
-                    for idx, row in df_impayes.iterrows()
-                }
-                with st.form("form_cloture_creance"):
-                    idx_choisi = st.selectbox(
-                        "Sélectionner l'opération à mettre à jour :",
-                        options=list(options_impayes.keys()),
-                        format_func=lambda i: options_impayes[i]
-                    )
-                    nouveau_statut_maj = st.selectbox("Nouveau statut :", ["Payé cash", "Retard", "En attente"])
-                    if st.form_submit_button("💾 Mettre à jour le statut"):
-                        df_creances_maj = df_creances.copy()
-                        df_creances_maj.at[idx_choisi, "Statut"] = nouveau_statut_maj
-                        conn.update(worksheet="Creances", data=df_creances_maj)
-                        st.success("Statut de la créance mis à jour avec succès.")
-                        st.rerun()
-
-        st.dataframe(df_creances, use_container_width=True)
-
-    st.divider()
-
-    # --- ETATS RECAPITULATIFS PRODUCTION ---
-    st.header("🗄️ États récapitulatifs")
-
-    if not df_hist.empty:
-        for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
-            df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
-
-        filtre_bat = st.selectbox("Filtrer l'état par bâtiment :", ["Tous les bâtiments"] + liste_bandes)
-        if filtre_bat != "Tous les bâtiments":
-            df_affiche = df_hist[df_hist["Bâtiment"] == filtre_bat]
-        else:
-            df_affiche = df_hist
-
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Total plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
-        k2.metric("Total cassés (pertes)", f"{int(df_affiche['Cassés'].sum())} pl.")
-        k3.metric("Mortalité cumulée", f"{int(df_affiche['Mortalité'].sum())} sujets")
-        k4.metric("Aliment total consommé", f"{df_affiche['Aliment (kg)'].sum():,.1f} kg")
-
-        st.dataframe(df_affiche, use_container_width=True)
-
-        csv_hist = df_affiche.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📊 Tirer l'état complet pour Excel (CSV)",
-            data=csv_hist,
-            file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("L'historique s'affichera ici dès que Sokodé aura effectué sa première saisie.")
+    # --- GEST
