@@ -98,6 +98,7 @@ if not st.session_state["authentifie"]:
 races = ["Pondeuses (Isa Brown)", "Poulets de chair", "Coquelets"]
 calibres = ["PIWI", "Petits", "Moyens", "Gros", "Super Gros", "Cassés"]
 liste_bandes = [f"Bande 0{i} (Kadjolo)" if i <= 2 else f"Bande 0{i}" for i in range(1, 7)]
+liste_aliments = ["Démarrage", "Croissance", "Pré ponte", "Ponte phase 1", "Ponte phase 2", "Finition"]
 
 prix_grossiste = {"PIWI": 1500, "Petits": 2000, "Moyens": 2400, "Gros": 2800, "Super Gros": 2900, "Cassés": 500}
 prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "Super Gros": 3000, "Cassés": 600}
@@ -122,17 +123,32 @@ if st.session_state["role"] == "ferme":
     date_jour = st.date_input("Date du relevé", datetime.now(), max_value=datetime.now().date())
     batiment = st.selectbox("Bâtiment ou bande concernée", liste_bandes)
     type_elevage = st.selectbox("Type d'élevage", races)
+
+    # Vérification anti-doublon pour la date et le bâtiment sélectionnés
+    df_hist_verif = charger_donnees("Historique_Ferme", cols_ferme)
+    date_str = date_jour.strftime("%d/%m/%Y")
+    doublon_existe = False
+    if not df_hist_verif.empty and "Date" in df_hist_verif.columns and "Bâtiment" in df_hist_verif.columns:
+        masque_doublon = (
+            (df_hist_verif["Date"].astype(str).str.strip() == date_str) &
+            (df_hist_verif["Bâtiment"].astype(str).str.strip() == batiment)
+        )
+        doublon_existe = masque_doublon.any()
+
+    if doublon_existe:
+        st.warning(f"⚠️ Un relevé a déjà été enregistré pour **{batiment}** à la date du **{date_str}**.")
     
     st.divider()
     
     saisie_oeufs = {cal: 0 for cal in calibres}
-    effectif_poules = 5000
+    effectif_poules = 0
     taux_ponte_calc = 0.0
     surplus_oeufs = 0
+    total_plateaux = 0
     
     if "Pondeuses" in type_elevage:
         st.subheader("🥚 1. Déclaration du ramassage et calcul du taux de ponte")
-        effectif_poules = st.number_input("Effectif total des sujets vivants dans la bande", min_value=1, value=5000, step=100)
+        effectif_poules = st.number_input("Effectif total des sujets vivants dans la bande", min_value=0, value=0, step=100)
         
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
@@ -148,10 +164,18 @@ if st.session_state["role"] == "ferme":
         surplus_oeufs = st.number_input("Surplus (nombre d'œufs en vrac hors plateaux)", min_value=0, step=1)
 
         total_plateaux = sum(saisie_oeufs.values())
+        plateaux_vendables = total_plateaux - saisie_oeufs["Cassés"]
         total_oeufs_vrac = (total_plateaux * 30) + surplus_oeufs
         taux_ponte_calc = (total_oeufs_vrac / effectif_poules) * 100 if effectif_poules > 0 else 0.0
         
-        st.markdown(f"### 📈 Taux de ponte calculé : **{taux_ponte_calc:.1f}%** ({total_oeufs_vrac} œufs ramassés pour {effectif_poules} poules)")
+        if effectif_poules > 0:
+            st.markdown(
+                f"### 📈 Taux de ponte calculé : **{taux_ponte_calc:.1f}%** "
+                f"({total_oeufs_vrac} œufs ramassés pour {effectif_poules} poules | "
+                f"**{plateaux_vendables} plateaux vendables**, {saisie_oeufs['Cassés']} cassés)"
+            )
+        else:
+            st.info("Saisissez l'effectif réel des sujets vivants pour afficher le taux de ponte.")
         st.divider()
     
     st.subheader("📦 2. Déclaration des événements et des sorties de stock")
@@ -161,7 +185,8 @@ if st.session_state["role"] == "ferme":
         mortalite = st.number_input("Mortalité du jour (nombre de sujets)", min_value=0, step=1)
     with col_s2:
         aliment_consomme = st.number_input("Aliment distribué (kg)", min_value=0.0, step=5.0)
-        type_aliment = st.selectbox("Type d'aliment", ["Démarrage", "Croissance", "Pré ponte", "Ponte phase 1", "Ponte phase 2", "Finition"])
+        index_alim_defaut = liste_aliments.index("Ponte phase 1") if "Pondeuses" in type_elevage else 0
+        type_aliment = st.selectbox("Type d'aliment", liste_aliments, index=index_alim_defaut, key=f"alim_{type_elevage}")
     with col_s3:
         gasoil = st.number_input("Gasoil consommé (litres)", min_value=0.0, step=1.0)
         veto = st.text_input("Produits vétérinaires utilisés (optionnel)")
@@ -175,7 +200,7 @@ if st.session_state["role"] == "ferme":
         pdf.set_font("Arial", "B", 14)
         pdf.cell(200, 10, txt=f"Rapport Quotidien NGA - {batiment}", ln=True, align='C')
         pdf.set_font("Arial", "", 11)
-        pdf.cell(200, 10, txt=f"Date : {date_jour.strftime('%d/%m/%Y')} a {heure_actuelle} | Elevage : {type_elevage}", ln=True, align='C')
+        pdf.cell(200, 10, txt=f"Date : {date_str} a {heure_actuelle} | Elevage : {type_elevage}", ln=True, align='C')
         pdf.ln(10)
         
         pdf.set_font("Arial", "B", 12)
@@ -187,8 +212,11 @@ if st.session_state["role"] == "ferme":
                 pdf.cell(200, 8, txt=f"- {k_clean} : {v} plateaux", ln=True)
             pdf.cell(200, 8, txt=f"- Surplus en vrac : {surplus_oeufs} oeufs", ln=True)
             total_pl = sum(saisie_oeufs.values())
+            pl_vendables = total_pl - saisie_oeufs["Cassés"]
+            pdf.ln(2)
             pdf.set_font("Arial", "B", 11)
-            pdf.cell(200, 8, txt=f"TOTAL : {total_pl} plateaux et {surplus_oeufs} oeufs | Taux de ponte : {taux_ponte_calc:.1f}%", ln=True)
+            pdf.cell(200, 8, txt=f"PLATEAUX VENDABLES (hors casses) : {pl_vendables} plateaux", ln=True)
+            pdf.cell(200, 8, txt=f"TOTAL RAMASSE : {total_pl} plateaux et {surplus_oeufs} oeufs | Taux de ponte : {taux_ponte_calc:.1f}%", ln=True)
         else:
             pdf.cell(200, 8, txt="Non applicable", ln=True)
         pdf.ln(5)
@@ -205,44 +233,69 @@ if st.session_state["role"] == "ferme":
         
         return bytes(pdf.output(dest='S').encode('latin-1', 'replace'))
 
+    confirmer_doublon = True
+    if doublon_existe:
+        confirmer_doublon = st.checkbox("Confirmer l'ajout d'un second relevé pour ce bâtiment à cette même date")
+
     if st.button("💾 Enregistrer et générer le rapport"):
-        with st.spinner("Enregistrement en cours..."):
-            heure_saisie = datetime.now().strftime("%H:%M")
-            total_plateaux = sum(saisie_oeufs.values())
-            
-            df_existant = charger_donnees("Historique_Ferme", cols_ferme)
-            nouvelle_entree = pd.DataFrame({
-                "Date": [date_jour.strftime("%d/%m/%Y")],
-                "Heure Saisie": [heure_saisie],
-                "Bâtiment": [batiment],
-                "Élevage": [type_elevage],
-                "PIWI": [saisie_oeufs["PIWI"]],
-                "Petits": [saisie_oeufs["Petits"]],
-                "Moyens": [saisie_oeufs["Moyens"]],
-                "Gros": [saisie_oeufs["Gros"]],
-                "Super Gros": [saisie_oeufs["Super Gros"]],
-                "Cassés": [saisie_oeufs["Cassés"]],
-                "Surplus (Œufs vrac)": [surplus_oeufs],
-                "Total Plateaux": [total_plateaux],
-                "Taux de Ponte (%)": [f"{taux_ponte_calc:.1f}%"],
-                "Mortalité": [mortalite],
-                "Aliment (kg)": [aliment_consomme],
-                "Type Aliment": [type_aliment],
-                "Gasoil (L)": [gasoil],
-                "Pharmacie": [veto if veto else "RAS"]
-            })
-            
-            df_mis_a_jour = pd.concat([df_existant, nouvelle_entree], ignore_index=True)
-            conn.update(worksheet="Historique_Ferme", data=df_mis_a_jour)
-            
-        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} enregistré et transmis à Lomé.")
-        pdf_report = generer_rapport_terrain(heure_saisie)
-        st.download_button(
-            label="📥 Télécharger le bordereau pour le chauffeur (PDF)",
-            data=pdf_report,
-            file_name=f"Rapport_Sokode_{date_jour.strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
+        releve_vide = (
+            total_plateaux == 0 and surplus_oeufs == 0 and mortalite == 0
+            and aliment_consomme == 0 and gasoil == 0 and not veto.strip()
         )
+
+        if "Pondeuses" in type_elevage and effectif_poules <= 0:
+            st.error("Veuillez saisir l'effectif total des sujets vivants dans la bande avant d'enregistrer.")
+        elif releve_vide:
+            st.error("Le relevé est vide. Veuillez saisir au moins une donnée avant d'enregistrer.")
+        elif doublon_existe and not confirmer_doublon:
+            st.error("Cochez la case de confirmation ci-dessus pour valider ce second relevé.")
+        else:
+            with st.spinner("Enregistrement en cours..."):
+                heure_saisie = datetime.now().strftime("%H:%M")
+                df_existant = charger_donnees("Historique_Ferme", cols_ferme)
+                nouvelle_entree = pd.DataFrame({
+                    "Date": [date_str],
+                    "Heure Saisie": [heure_saisie],
+                    "Bâtiment": [batiment],
+                    "Élevage": [type_elevage],
+                    "PIWI": [saisie_oeufs["PIWI"]],
+                    "Petits": [saisie_oeufs["Petits"]],
+                    "Moyens": [saisie_oeufs["Moyens"]],
+                    "Gros": [saisie_oeufs["Gros"]],
+                    "Super Gros": [saisie_oeufs["Super Gros"]],
+                    "Cassés": [saisie_oeufs["Cassés"]],
+                    "Surplus (Œufs vrac)": [surplus_oeufs],
+                    "Total Plateaux": [total_plateaux],
+                    "Taux de Ponte (%)": [f"{taux_ponte_calc:.1f}%"],
+                    "Mortalité": [mortalite],
+                    "Aliment (kg)": [aliment_consomme],
+                    "Type Aliment": [type_aliment],
+                    "Gasoil (L)": [gasoil],
+                    "Pharmacie": [veto.strip() if veto.strip() else "RAS"]
+                })
+                
+                df_mis_a_jour = pd.concat([df_existant, nouvelle_entree], ignore_index=True)
+                conn.update(worksheet="Historique_Ferme", data=df_mis_a_jour)
+
+                # Déduction automatique du gasoil dans le stock du magasin
+                if gasoil > 0:
+                    df_stock_ferme = charger_donnees("Stock", cols_stock)
+                    if not df_stock_ferme.empty and "Intrant" in df_stock_ferme.columns:
+                        masque_gasoil = df_stock_ferme["Intrant"].astype(str).str.lower().str.contains("gasoil", na=False)
+                        if masque_gasoil.any():
+                            idx_g = df_stock_ferme[masque_gasoil].index[0]
+                            qte_actuelle = parse_float(df_stock_ferme.at[idx_g, "Quantité"], 0.0)
+                            df_stock_ferme.at[idx_g, "Quantité"] = max(0.0, round(qte_actuelle - gasoil, 2))
+                            conn.update(worksheet="Stock", data=df_stock_ferme)
+                
+            st.success(f"✅ Relevé du {date_str} à {heure_saisie} enregistré et transmis à Lomé.")
+            pdf_report = generer_rapport_terrain(heure_saisie)
+            st.download_button(
+                label="📥 Télécharger le bordereau pour le chauffeur (PDF)",
+                data=pdf_report,
+                file_name=f"Rapport_Sokode_{date_jour.strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
 
 
 # =====================================================================
