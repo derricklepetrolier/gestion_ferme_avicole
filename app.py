@@ -35,6 +35,12 @@ def charger_donnees(onglet, colonnes_defaut):
     except Exception:
         return pd.DataFrame(columns=colonnes_defaut)
 
+def parse_float(val, defaut=0.0):
+    try:
+        return float(str(val).replace("%", "").replace(",", ".").strip())
+    except Exception:
+        return defaut
+
 cols_ferme = [
     "Date", "Heure Saisie", "Bâtiment", "Élevage", "PIWI", "Petits", 
     "Moyens", "Gros", "Super Gros", "Cassés", "Surplus (Œufs vrac)", 
@@ -43,6 +49,7 @@ cols_ferme = [
 ]
 cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", "Statut"]
 cols_stock = ["Intrant", "Quantité", "Unité", "Seuil Alerte"]
+cols_params = ["Paramètre", "Valeur"]
 
 # --- 3. GESTION PERSISTANTE DE LA CONNEXION ---
 params = st.query_params
@@ -238,25 +245,9 @@ elif st.session_state["role"] == "direction":
     df_hist = charger_donnees("Historique_Ferme", cols_ferme)
     df_creances = charger_donnees("Creances", cols_creances)
     df_stock = charger_donnees("Stock", cols_stock)
-    
-    if not df_hist.empty:
-        derniere_ligne = df_hist.iloc[-1]
-        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** sur **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort)")
-    else:
-        st.warning("Aucun relevé n'a encore été enregistré dans la base centrale.")
-        
-    st.divider()
-    
-    st.header("🚨 Moteur d'alertes et écarts")
-    col_a1, col_a2, col_a3 = st.columns(3)
-    col_a1.error("📉 Alerte ponte : objectif 78 %, réel 71 %")
-    col_a2.warning("⚠️ Alerte mortalité : taux de 3,2 % dépassé")
-    col_a3.error("⛽ Alerte gasoil : stock inférieur à 50 litres")
-    
-    st.divider()
-    
-    st.header("🏭 État du magasin et gestion des stocks")
-    
+    df_params = charger_donnees("Parametres", cols_params)
+
+    # Valeurs par défaut du magasin si l'onglet Stock est vide
     if df_stock.empty:
         df_stock = pd.DataFrame({
             "Intrant": ["Maïs", "Tourteaux de soja", "Son cubé", "Gasoil"],
@@ -265,20 +256,133 @@ elif st.session_state["role"] == "direction":
             "Seuil Alerte": [5.0, 1.5, 1.0, 50.0]
         })
 
+    # Lecture des seuils d'alerte de production (base centrale ou valeurs par défaut)
+    params_dict = {}
+    if not df_params.empty and "Paramètre" in df_params.columns and "Valeur" in df_params.columns:
+        params_dict = dict(zip(df_params["Paramètre"], df_params["Valeur"]))
+
+    objectif_ponte = parse_float(params_dict.get("Objectif_Ponte", st.session_state.get("objectif_ponte", 78.0)), 78.0)
+    seuil_mortalite = int(parse_float(params_dict.get("Seuil_Mortalite", st.session_state.get("seuil_mortalite", 10)), 10.0))
+
+    if not df_hist.empty:
+        derniere_ligne = df_hist.iloc[-1]
+        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** sur **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort)")
+    else:
+        st.warning("Aucun relevé n'a encore été enregistré dans la base centrale.")
+        
+    st.divider()
+    
+    # --- MOTEUR D'ALERTES DYNAMIQUE ---
+    st.header("🚨 Moteur d'alertes et écarts")
+    col_a1, col_a2, col_a3 = st.columns(3)
+
+    # 1. Alerte ponte (dernier relevé pondeuses)
+    if not df_hist.empty and "Élevage" in df_hist.columns:
+        df_pondeuses = df_hist[df_hist["Élevage"].astype(str).str.contains("Pondeuses", case=False, na=False)]
+        if not df_pondeuses.empty:
+            dernier_ponte = df_pondeuses.iloc[-1]
+            taux_reel = parse_float(dernier_ponte["Taux de Ponte (%)"], 0.0)
+            ecart_ponte = taux_reel - objectif_ponte
+            bat_ponte = dernier_ponte["Bâtiment"]
+            if taux_reel < objectif_ponte:
+                col_a1.error(f"📉 Alerte ponte : objectif {objectif_ponte:.1f} %, réel {taux_reel:.1f} % ({ecart_ponte:+.1f} % sur {bat_ponte})")
+            else:
+                col_a1.success(f"📈 Ponte conforme : réel {taux_reel:.1f} % (objectif {objectif_ponte:.1f} % sur {bat_ponte})")
+        else:
+            col_a1.info("📉 Ponte : aucun relevé pondeuses enregistré.")
+    else:
+        col_a1.info("📉 Ponte : en attente d'un relevé de Sokodé.")
+
+    # 2. Alerte mortalité (dernier relevé)
+    if not df_hist.empty:
+        mort_reelle = int(parse_float(df_hist.iloc[-1]["Mortalité"], 0.0))
+        bat_mort = df_hist.iloc[-1]["Bâtiment"]
+        if mort_reelle > seuil_mortalite:
+            col_a2.warning(f"⚠️ Alerte mortalité : {mort_reelle} sujets sur {bat_mort} (seuil max : {seuil_mortalite})")
+        else:
+            col_a2.success(f"✅ Mortalité normale : {mort_reelle} sujet(s) sur {bat_mort} (seuil max : {seuil_mortalite})")
+    else:
+        col_a2.info("⚠️ Mortalité : en attente d'un relevé de Sokodé.")
+
+    # 3. Alerte stocks (intrants sous seuil critique)
+    alertes_stock = []
+    for _, row in df_stock.iterrows():
+        qte = parse_float(row["Quantité"], 0.0)
+        seuil = parse_float(row["Seuil Alerte"], 0.0)
+        if qte <= seuil:
+            alertes_stock.append(f"{row['Intrant']} ({qte} {row['Unité']})")
+
+    if alertes_stock:
+        col_a3.error("⛽ Alerte stock bas : " + ", ".join(alertes_stock))
+    else:
+        col_a3.success("✅ Stocks conformes : tous les intrants sont au dessus du seuil.")
+
+    with st.expander("⚙️ Régler les seuils d'alerte"):
+        with st.form("form_update_seuils"):
+            st.write("Seuils de production (Sokodé) :")
+            c_p1, c_p2 = st.columns(2)
+            new_obj_ponte = c_p1.number_input("Objectif taux de ponte (%)", min_value=0.0, max_value=100.0, value=float(objectif_ponte), step=1.0)
+            new_seuil_mort = c_p2.number_input("Seuil alerte mortalité (sujets par relevé)", min_value=0, value=int(seuil_mortalite), step=1)
+
+            st.write("Seuils critiques du magasin :")
+            cols_seuil_stk = st.columns(len(df_stock))
+            stock_seuils_maj = []
+            for idx, row in df_stock.iterrows():
+                with cols_seuil_stk[idx % len(cols_seuil_stk)]:
+                    s_mod = st.number_input(
+                        f"Seuil {row['Intrant']} ({row['Unité']})",
+                        min_value=0.0,
+                        value=parse_float(row["Seuil Alerte"], 0.0),
+                        step=0.5,
+                        key=f"seuil_stk_{idx}"
+                    )
+                    stock_seuils_maj.append({
+                        "Intrant": row["Intrant"],
+                        "Quantité": parse_float(row["Quantité"], 0.0),
+                        "Unité": row["Unité"],
+                        "Seuil Alerte": s_mod
+                    })
+
+            if st.form_submit_button("💾 Enregistrer les seuils d'alerte"):
+                st.session_state["objectif_ponte"] = new_obj_ponte
+                st.session_state["seuil_mortalite"] = new_seuil_mort
+
+                # Mise à jour des seuils du magasin
+                df_stock_seuils = pd.DataFrame(stock_seuils_maj)
+                conn.update(worksheet="Stock", data=df_stock_seuils)
+
+                # Sauvegarde des seuils de production dans l'onglet Parametres
+                df_params_nouveau = pd.DataFrame({
+                    "Paramètre": ["Objectif_Ponte", "Seuil_Mortalite"],
+                    "Valeur": [new_obj_ponte, new_seuil_mort]
+                })
+                try:
+                    conn.update(worksheet="Parametres", data=df_params_nouveau)
+                    st.success("Seuils d'alerte mis à jour avec succès.")
+                except Exception:
+                    st.warning("Seuils du magasin enregistrés. Créez l'onglet Parametres dans la base centrale pour sauvegarder durablement les seuils de ponte et de mortalité.")
+                st.rerun()
+    
+    st.divider()
+    
+    st.header("🏭 État du magasin et gestion des stocks")
+
     cols_met = st.columns(len(df_stock))
     for idx, row in df_stock.iterrows():
         with cols_met[idx % len(cols_met)]:
-            delta_val = "OK" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "Critique"
-            delta_col = "normal" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "inverse"
-            cols_met[idx % len(cols_met)].metric(row["Intrant"], f"{row['Quantité']} {row['Unité']}", delta_val, delta_color=delta_col)
+            qte_val = parse_float(row["Quantité"], 0.0)
+            seuil_val = parse_float(row["Seuil Alerte"], 0.0)
+            delta_val = "OK" if qte_val > seuil_val else "Critique"
+            delta_col = "normal" if qte_val > seuil_val else "inverse"
+            cols_met[idx % len(cols_met)].metric(row["Intrant"], f"{qte_val} {row['Unité']}", delta_val, delta_color=delta_col)
 
     with st.expander("⚙️ Modifier ou réapprovisionner le stock"):
         with st.form("form_update_stock"):
             st.write("Mettez à jour les quantités disponibles en stock :")
             updated_rows = []
             for idx, row in df_stock.iterrows():
-                q_mod = st.number_input(f"Quantité pour {row['Intrant']} ({row['Unité']})", value=float(row["Quantité"]), step=0.5, key=f"stk_{idx}")
-                updated_rows.append({"Intrant": row["Intrant"], "Quantité": q_mod, "Unité": row["Unité"], "Seuil Alerte": row["Seuil Alerte"]})
+                q_mod = st.number_input(f"Quantité pour {row['Intrant']} ({row['Unité']})", value=parse_float(row["Quantité"], 0.0), step=0.5, key=f"stk_{idx}")
+                updated_rows.append({"Intrant": row["Intrant"], "Quantité": q_mod, "Unité": row["Unité"], "Seuil Alerte": parse_float(row["Seuil Alerte"], 0.0)})
             
             if st.form_submit_button("💾 Enregistrer les modifications du stock"):
                 df_stock_nouveau = pd.DataFrame(updated_rows)
