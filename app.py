@@ -87,7 +87,7 @@ prix_grossiste = {"PIWI": 1500, "Petits": 2000, "Moyens": 2400, "Gros": 2800, "S
 prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "Super Gros": 3000, "Cassés": 600}
 
 # --- 5. MENU COMMUN ---
-st.sidebar.title("🚜 NGA Togo")
+st.sidebar.title("🥚🐓 NGA Togo")
 st.sidebar.info(f"Connecté en tant que : **{st.session_state['role'].upper()}**")
 if st.sidebar.button("Se déconnecter"):
     st.session_state["authentifie"] = False
@@ -288,7 +288,7 @@ elif st.session_state["role"] == "direction":
 
     st.divider()
     
-    st.header("💰 Module financier et ventes clients")
+    st.header("💰 Module financier/ventes clients")
     type_client = st.radio("Grille tarifaire de référence :", ["Grossiste", "Détaillant"], horizontal=True)
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
@@ -311,14 +311,16 @@ elif st.session_state["role"] == "direction":
     st.divider()
     
     st.header("📝 Gestion des créances et trésorerie")
-    with st.form("formulaire_creance", clear_on_submit=True):
+    with st.form("formulaire_creance"):
         col_f1, col_f2, col_f3 = st.columns(3)
         date_op = col_f1.date_input("Date de l'opération", datetime.now(), max_value=datetime.now().date())
-        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles)
+        
+        index_client = clients_disponibles.index(client_actif)
+        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles, index=index_client, key=f"acheteur_{client_actif}")
         nouveau_type = col_f3.selectbox("Type de vente", ["Œufs", "Poules réforme", "Fiente engrais", "Poulets de chair"])
         
         col_f4, col_f5 = st.columns(2)
-        nouveau_montant = col_f4.number_input("Montant dû ou payé (FCFA)", min_value=0, step=5000)
+        nouveau_montant = col_f4.number_input("Montant dû ou payé (FCFA)", min_value=0, value=int(ca_client), step=5000, key=f"montant_{ca_client}")
         nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé cash"])
         
         if st.form_submit_button("➕ Enregistrer l'opération financière"):
@@ -342,7 +344,7 @@ elif st.session_state["role"] == "direction":
 
     st.divider()
 
-    st.header("🗄️ Base de données historique et états récapitulatifs")
+    st.header("🗄️ Etats récapitulatifs")
 
     if not df_hist.empty:
         for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
