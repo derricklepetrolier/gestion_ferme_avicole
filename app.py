@@ -7,7 +7,7 @@ from streamlit_gsheets import GSheetsConnection
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NGA AgroGestion", layout="wide", page_icon="🐓")
 
-# --- MASQUER L'INTERFACE, LES MENUS ET LES LOGOS EN BAS À DROITE ---
+# --- MASQUER L'INTERFACE, LES MENUS ET LES LOGOS EN BAS A DROITE ---
 cacher_menu_style = """
         <style>
         #MainMenu {visibility: hidden;} 
@@ -22,7 +22,7 @@ cacher_menu_style = """
         """
 st.markdown(cacher_menu_style, unsafe_allow_html=True)
 
-# --- 2. CONNEXION À LA BASE DE DONNÉES ---
+# --- 2. CONNEXION A LA BASE DE DONNEES ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def charger_donnees(onglet, colonnes_defaut):
@@ -36,13 +36,13 @@ def charger_donnees(onglet, colonnes_defaut):
         return pd.DataFrame(columns=colonnes_defaut)
 
 cols_ferme = [
-    "Date", "Heure Saisie", "Batiment", "Elevage", "PIWI", "Petits", 
-    "Moyens", "Gros", "Super Gros", "Casses", "Surplus oeufs vrac", 
-    "Total Plateaux", "Taux de ponte", "Mortalite", "Aliment kg", 
-    "Type Aliment", "Gasoil Litres", "Pharmacie"
+    "Date", "Heure Saisie", "Bâtiment", "Élevage", "PIWI", "Petits", 
+    "Moyens", "Gros", "Super Gros", "Cassés", "Surplus (Œufs vrac)", 
+    "Total Plateaux", "Taux de Ponte (%)", "Mortalité", "Aliment (kg)", 
+    "Type Aliment", "Gasoil (L)", "Pharmacie"
 ]
-cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû FCFA", "Statut"]
-cols_stock = ["Intrant", "Quantite", "Unite", "Seuil Alerte"]
+cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", "Statut"]
+cols_stock = ["Intrant", "Quantité", "Unité", "Seuil Alerte"]
 
 # --- 3. GESTION PERSISTANTE DE LA CONNEXION ---
 params = st.query_params
@@ -57,7 +57,7 @@ if "authentifie" not in st.session_state:
         st.session_state["role"] = ""
 
 if not st.session_state["authentifie"]:
-    st.title("NGA AgroGestion")
+    st.title("🥚🐓 NGA AgroGestion")
     st.write("Veuillez vous connecter avec vos identifiants de site.")
     
     identifiant = st.text_input("Identifiant")
@@ -78,18 +78,18 @@ if not st.session_state["authentifie"]:
             st.error("Identifiant ou mot de passe incorrect.")
     st.stop()
 
-# --- 4. DONNÉES METIER ---
-races = ["Pondeuses Isa Brown", "Poulets de chair", "Coquelets"]
-calibres = ["PIWI", "Petits", "Moyens", "Gros", "Super Gros", "Casses"]
-liste_bandes = [f"Bande 0{i} Kadjolo" if i <= 2 else f"Bande 0{i}" for i in range(1, 7)]
+# --- 4. DONNEES METIER ---
+races = ["Pondeuses (Isa Brown)", "Poulets de chair", "Coquelets"]
+calibres = ["PIWI", "Petits", "Moyens", "Gros", "Super Gros", "Cassés"]
+liste_bandes = [f"Bande 0{i} (Kadjolo)" if i <= 2 else f"Bande 0{i}" for i in range(1, 7)]
 
-prix_grossiste = {"PIWI": 1500, "Petits": 2000, "Moyens": 2400, "Gros": 2800, "Super Gros": 2900, "Casses": 500}
-prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "Super Gros": 3000, "Casses": 600}
+prix_grossiste = {"PIWI": 1500, "Petits": 2000, "Moyens": 2400, "Gros": 2800, "Super Gros": 2900, "Cassés": 500}
+prix_detaillant = {"PIWI": 1600, "Petits": 2100, "Moyens": 2500, "Gros": 2950, "Super Gros": 3000, "Cassés": 600}
 
 # --- 5. MENU COMMUN ---
-st.sidebar.title("NGA Togo")
-st.sidebar.info(f"Connecte en tant que : {st.session_state['role'].upper()}")
-if st.sidebar.button("Se deconnecter"):
+st.sidebar.title("🚜 NGA Togo")
+st.sidebar.info(f"Connecté en tant que : **{st.session_state['role'].upper()}**")
+if st.sidebar.button("Se déconnecter"):
     st.session_state["authentifie"] = False
     st.session_state["role"] = ""
     st.query_params.clear()
@@ -97,17 +97,15 @@ if st.sidebar.button("Se deconnecter"):
 
 
 # =====================================================================
-# ESPACE 1 : LA FERME (SOKODE) - SAISIE UNIQUEMENT
+# ESPACE 1 : LA FERME (SOKODE)
 # =====================================================================
 if st.session_state["role"] == "ferme":
-    st.title("Interface de saisie quotidienne Sokode")
-    st.info("Les donnees validees ici sont transmises en temps reel a la direction.")
+    st.title("📋 Interface de saisie quotidienne (Sokodé)")
+    st.info("Les données validées ici sont transmises en temps réel à la direction.")
     
-    # CORRECTION : La date ne peut pas aller au-delà d'aujourd'hui
-    date_jour = st.date_input("Date du releve", datetime.now(), max_value=datetime.now().date())
-    
-    batiment = st.selectbox("Batiment ou bande concernee", liste_bandes)
-    type_elevage = st.selectbox("Type d'elevage", races)
+    date_jour = st.date_input("Date du relevé", datetime.now(), max_value=datetime.now().date())
+    batiment = st.selectbox("Bâtiment ou bande concernée", liste_bandes)
+    type_elevage = st.selectbox("Type d'élevage", races)
     
     st.divider()
     
@@ -117,43 +115,43 @@ if st.session_state["role"] == "ferme":
     surplus_oeufs = 0
     
     if "Pondeuses" in type_elevage:
-        st.subheader("1. Declaration du ramassage et calcul du taux de ponte")
+        st.subheader("🥚 1. Déclaration du ramassage et calcul du taux de ponte")
         effectif_poules = st.number_input("Effectif total des sujets vivants dans la bande", min_value=1, value=5000, step=100)
         
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
-            saisie_oeufs["PIWI"] = st.number_input("PIWI plateaux", min_value=0, step=1)
-            saisie_oeufs["Petits"] = st.number_input("Petits plateaux", min_value=0, step=1)
+            saisie_oeufs["PIWI"] = st.number_input("PIWI (plateaux)", min_value=0, step=1)
+            saisie_oeufs["Petits"] = st.number_input("Petits (plateaux)", min_value=0, step=1)
         with col_c2:
-            saisie_oeufs["Moyens"] = st.number_input("Moyens plateaux", min_value=0, step=1)
-            saisie_oeufs["Gros"] = st.number_input("Gros plateaux", min_value=0, step=1)
+            saisie_oeufs["Moyens"] = st.number_input("Moyens (plateaux)", min_value=0, step=1)
+            saisie_oeufs["Gros"] = st.number_input("Gros (plateaux)", min_value=0, step=1)
         with col_c3:
-            saisie_oeufs["Super Gros"] = st.number_input("Super Gros plateaux", min_value=0, step=1)
-            saisie_oeufs["Casses"] = st.number_input("Casses plateaux", min_value=0, step=1)
+            saisie_oeufs["Super Gros"] = st.number_input("Super Gros (plateaux)", min_value=0, step=1)
+            saisie_oeufs["Cassés"] = st.number_input("Cassés ou pertes (plateaux)", min_value=0, step=1)
             
-        surplus_oeufs = st.number_input("Surplus nombre d'oeufs en vrac hors plateaux", min_value=0, step=1)
+        surplus_oeufs = st.number_input("Surplus (nombre d'œufs en vrac hors plateaux)", min_value=0, step=1)
 
         total_plateaux = sum(saisie_oeufs.values())
         total_oeufs_vrac = (total_plateaux * 30) + surplus_oeufs
         taux_ponte_calc = (total_oeufs_vrac / effectif_poules) * 100 if effectif_poules > 0 else 0.0
         
-        st.markdown(f"### Taux de ponte calcule : **{taux_ponte_calc:.1f}%** ({total_oeufs_vrac} oeufs ramasses pour {effectif_poules} poules)")
+        st.markdown(f"### 📈 Taux de ponte calculé : **{taux_ponte_calc:.1f}%** ({total_oeufs_vrac} œufs ramassés pour {effectif_poules} poules)")
         st.divider()
     
-    st.subheader("2. Declaration des evenements et des sorties de stock")
+    st.subheader("📦 2. Déclaration des événements et des sorties de stock")
     col_s1, col_s2, col_s3 = st.columns(3)
     
     with col_s1:
-        mortalite = st.number_input("Mortalite du jour nombre de sujets", min_value=0, step=1)
+        mortalite = st.number_input("Mortalité du jour (nombre de sujets)", min_value=0, step=1)
     with col_s2:
-        aliment_consomme = st.number_input("Aliment distribue kg", min_value=0.0, step=5.0)
-        type_aliment = st.selectbox("Type d'aliment", ["Demarrage", "Croissance", "Pre ponte", "Ponte Phase 1", "Ponte Phase 2", "Finition"])
+        aliment_consomme = st.number_input("Aliment distribué (kg)", min_value=0.0, step=5.0)
+        type_aliment = st.selectbox("Type d'aliment", ["Démarrage", "Croissance", "Pré ponte", "Ponte phase 1", "Ponte phase 2", "Finition"])
     with col_s3:
-        gasoil = st.number_input("Gasoil consomme Litres", min_value=0.0, step=1.0)
-        veto = st.text_input("Produits veterinaires utilises optionnel")
+        gasoil = st.number_input("Gasoil consommé (litres)", min_value=0.0, step=1.0)
+        veto = st.text_input("Produits vétérinaires utilisés (optionnel)")
         
     st.divider()
-    st.subheader("3. Generation du rapport quotidien bordereau chauffeur")
+    st.subheader("📄 3. Génération du rapport quotidien (bordereau chauffeur)")
     
     def generer_rapport_terrain(heure_actuelle):
         pdf = FPDF()
@@ -169,7 +167,8 @@ if st.session_state["role"] == "ferme":
         pdf.set_font("Arial", "", 11)
         if "Pondeuses" in type_elevage:
             for k, v in saisie_oeufs.items():
-                pdf.cell(200, 8, txt=f"- {k} : {v} plateaux", ln=True)
+                k_clean = k.replace("é", "e")
+                pdf.cell(200, 8, txt=f"- {k_clean} : {v} plateaux", ln=True)
             pdf.cell(200, 8, txt=f"- Surplus en vrac : {surplus_oeufs} oeufs", ln=True)
             total_pl = sum(saisie_oeufs.values())
             pdf.set_font("Arial", "B", 11)
@@ -179,16 +178,18 @@ if st.session_state["role"] == "ferme":
         pdf.ln(5)
         
         pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 10, txt="2. EVENEMENTS et STOCKS", ln=True)
+        pdf.cell(200, 10, txt="2. EVENEMENTS ET STOCKS", ln=True)
         pdf.set_font("Arial", "", 11)
+        type_alim_clean = type_aliment.replace("é", "e")
+        veto_clean = (veto if veto else "RAS").encode('latin-1', 'replace').decode('latin-1')
         pdf.cell(200, 8, txt=f"- Mortalite : {mortalite} sujets", ln=True)
-        pdf.cell(200, 8, txt=f"- Aliment : {aliment_consomme} kg", ln=True)
-        pdf.cell(200, 8, txt=f"- Gasoil : {gasoil} Litres", ln=True)
-        pdf.cell(200, 8, txt=f"- Pharmacie : {veto if veto else 'RAS'}", ln=True)
+        pdf.cell(200, 8, txt=f"- Aliment ({type_alim_clean}) : {aliment_consomme} kg", ln=True)
+        pdf.cell(200, 8, txt=f"- Gasoil : {gasoil} litres", ln=True)
+        pdf.cell(200, 8, txt=f"- Pharmacie : {veto_clean}", ln=True)
         
         return bytes(pdf.output(dest='S').encode('latin-1', 'replace'))
 
-    if st.button("Enregistrer et generer le rapport"):
+    if st.button("💾 Enregistrer et générer le rapport"):
         with st.spinner("Enregistrement en cours..."):
             heure_saisie = datetime.now().strftime("%H:%M")
             total_plateaux = sum(saisie_oeufs.values())
@@ -197,31 +198,31 @@ if st.session_state["role"] == "ferme":
             nouvelle_entree = pd.DataFrame({
                 "Date": [date_jour.strftime("%d/%m/%Y")],
                 "Heure Saisie": [heure_saisie],
-                "Batiment": [batiment],
-                "Elevage": [type_elevage],
+                "Bâtiment": [batiment],
+                "Élevage": [type_elevage],
                 "PIWI": [saisie_oeufs["PIWI"]],
                 "Petits": [saisie_oeufs["Petits"]],
                 "Moyens": [saisie_oeufs["Moyens"]],
                 "Gros": [saisie_oeufs["Gros"]],
                 "Super Gros": [saisie_oeufs["Super Gros"]],
-                "Casses": [saisie_oeufs["Casses"]],
-                "Surplus oeufs vrac": [surplus_oeufs],
+                "Cassés": [saisie_oeufs["Cassés"]],
+                "Surplus (Œufs vrac)": [surplus_oeufs],
                 "Total Plateaux": [total_plateaux],
-                "Taux de ponte": [f"{taux_ponte_calc:.1f}%"],
-                "Mortalite": [mortalite],
-                "Aliment kg": [aliment_consomme],
+                "Taux de Ponte (%)": [f"{taux_ponte_calc:.1f}%"],
+                "Mortalité": [mortalite],
+                "Aliment (kg)": [aliment_consomme],
                 "Type Aliment": [type_aliment],
-                "Gasoil Litres": [gasoil],
+                "Gasoil (L)": [gasoil],
                 "Pharmacie": [veto if veto else "RAS"]
             })
             
             df_mis_a_jour = pd.concat([df_existant, nouvelle_entree], ignore_index=True)
             conn.update(worksheet="Historique_Ferme", data=df_mis_a_jour)
             
-        st.success(f"Releve du {date_jour.strftime('%d/%m/%Y')} a {heure_saisie} enregistre et transmis a Lome !")
+        st.success(f"✅ Relevé du {date_jour.strftime('%d/%m/%Y')} à {heure_saisie} enregistré et transmis à Lomé.")
         pdf_report = generer_rapport_terrain(heure_saisie)
         st.download_button(
-            label="Telecharger le bordereau chauffeur PDF",
+            label="📥 Télécharger le bordereau pour le chauffeur (PDF)",
             data=pdf_report,
             file_name=f"Rapport_Sokode_{date_jour.strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
@@ -229,10 +230,10 @@ if st.session_state["role"] == "ferme":
 
 
 # =====================================================================
-# ESPACE 2 : LA DIRECTION (LOME) - ANALYSE ET FINANCE
+# ESPACE 2 : LA DIRECTION (LOME)
 # =====================================================================
 elif st.session_state["role"] == "direction":
-    st.title("Tableau de bord Lome")
+    st.title("📊 Tableau de bord (Lomé)")
     
     df_hist = charger_donnees("Historique_Ferme", cols_ferme)
     df_creances = charger_donnees("Creances", cols_creances)
@@ -240,56 +241,133 @@ elif st.session_state["role"] == "direction":
     
     if not df_hist.empty:
         derniere_ligne = df_hist.iloc[-1]
-        st.info(f"Dernier releve recu de Sokode : le {derniere_ligne['Date']} a {derniere_ligne['Heure Saisie']} — {derniere_ligne['Batiment']} ({derniere_ligne['Total Plateaux']} plateaux, taux de ponte : {derniere_ligne['Taux de ponte']}, {derniere_ligne['Mortalite']} mort)")
+        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** sur **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort)")
     else:
-        st.warning("Aucun releve n'a encore ete enregistre dans la base centrale.")
+        st.warning("Aucun relevé n'a encore été enregistré dans la base centrale.")
         
     st.divider()
     
-    st.header("Moteur d'alertes et ecarts")
+    st.header("🚨 Moteur d'alertes et écarts")
     col_a1, col_a2, col_a3 = st.columns(3)
-    col_a1.error("ALERTE PONTE : Objectif 78% | Reel 71%")
-    col_a2.warning("ALERTE MORTALITE : Taux de 3.2% depasse")
-    col_a3.error("ALERTE GASOIL : Stock inferieur a 50 Litres")
+    col_a1.error("📉 Alerte ponte : objectif 78 %, réel 71 %")
+    col_a2.warning("⚠️ Alerte mortalité : taux de 3,2 % dépassé")
+    col_a3.error("⛽ Alerte gasoil : stock inférieur à 50 litres")
     
     st.divider()
     
-    st.header("Etat du magasin et gestion des stocks")
+    st.header("🏭 État du magasin et gestion des stocks")
     
     if df_stock.empty:
         df_stock = pd.DataFrame({
-            "Intrant": ["Mais", "Tourteaux de Soja", "Son Cube", "Gasoil"],
-            "Quantite": [12.5, 1.2, 4.0, 45.0],
-            "Unite": ["Tonnes", "Tonnes", "Tonnes", "Litres"],
+            "Intrant": ["Maïs", "Tourteaux de soja", "Son cubé", "Gasoil"],
+            "Quantité": [12.5, 1.2, 4.0, 45.0],
+            "Unité": ["Tonnes", "Tonnes", "Tonnes", "Litres"],
             "Seuil Alerte": [5.0, 1.5, 1.0, 50.0]
         })
 
     cols_met = st.columns(len(df_stock))
     for idx, row in df_stock.iterrows():
         with cols_met[idx % len(cols_met)]:
-            delta_val = "OK" if float(row["Quantite"]) > float(row["Seuil Alerte"]) else "Critique"
-            delta_col = "normal" if float(row["Quantite"]) > float(row["Seuil Alerte"]) else "inverse"
-            cols_met[idx % len(cols_met)].metric(row["Intrant"], f"{row['Quantite']} {row['Unite']}", delta_val, delta_color=delta_col)
+            delta_val = "OK" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "Critique"
+            delta_col = "normal" if float(row["Quantité"]) > float(row["Seuil Alerte"]) else "inverse"
+            cols_met[idx % len(cols_met)].metric(row["Intrant"], f"{row['Quantité']} {row['Unité']}", delta_val, delta_color=delta_col)
 
-    with st.expander("Modifier ou reapprovisionner le stock"):
+    with st.expander("⚙️ Modifier ou réapprovisionner le stock"):
         with st.form("form_update_stock"):
-            st.write("Mettez a jour les quantites disponibles en stock :")
+            st.write("Mettez à jour les quantités disponibles en stock :")
             updated_rows = []
             for idx, row in df_stock.iterrows():
-                q_mod = st.number_input(f"Quantite pour {row['Intrant']} ({row['Unite']})", value=float(row["Quantite"]), step=0.5, key=f"stk_{idx}")
-                updated_rows.append({"Intrant": row["Intrant"], "Quantite": q_mod, "Unite": row["Unite"], "Seuil Alerte": row["Seuil Alerte"]})
+                q_mod = st.number_input(f"Quantité pour {row['Intrant']} ({row['Unité']})", value=float(row["Quantité"]), step=0.5, key=f"stk_{idx}")
+                updated_rows.append({"Intrant": row["Intrant"], "Quantité": q_mod, "Unité": row["Unité"], "Seuil Alerte": row["Seuil Alerte"]})
             
-            if st.form_submit_button("Enregistrer les modifications du stock"):
+            if st.form_submit_button("💾 Enregistrer les modifications du stock"):
                 df_stock_nouveau = pd.DataFrame(updated_rows)
                 conn.update(worksheet="Stock", data=df_stock_nouveau)
-                st.success("Stocks mis a jour avec succes !")
+                st.success("Stocks mis à jour avec succès.")
                 st.rerun()
 
     st.divider()
     
-    st.header("Module financier et ventes multi clients")
-    type_client = st.radio("Grille tarifaire de reference :", ["Grossiste", "Detaillant"], horizontal=True)
+    st.header("💰 Module financier et ventes clients")
+    type_client = st.radio("Grille tarifaire de référence :", ["Grossiste", "Détaillant"], horizontal=True)
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
     clients_disponibles = ["Client 01 AGROSATH", "Client 02 JOSUE", "Client 03 BOUTIQUE CENTRALE", "Client 04 MARCHE CENTRAL", "Client 05 PASSAGER 1", "Client 06 PASSAGER 2"]
-    client_actif = st.selectbox("Selectionner le client pour cette saisie de vente :", clients_disponibles)
+    client_actif = st.selectbox("Sélectionner le client pour cette saisie de vente :", clients_disponibles)
+    
+    st.subheader(f"Plateaux vendus pour {client_actif} :")
+    cols_vente = st.columns(6)
+    ventes = {}
+    
+    for i, cal in enumerate(calibres):
+        with cols_vente[i]:
+            val_def = 20 if cal == "Gros" else 0
+            ventes[cal] = st.number_input(f"{cal}", value=val_def, min_value=0, step=5, key=f"v_{cal}")
+            st.caption(f"{grille_active[cal]} F/pl")
+            
+    ca_client = sum(ventes[cal] * grille_active[cal] for cal in calibres)
+    st.markdown(f"<h3 style='color: #4CAF50;'>Chiffre d'affaires pour {client_actif} : {ca_client:,.0f} FCFA</h3>", unsafe_allow_html=True)
+    
+    st.divider()
+    
+    st.header("📝 Gestion des créances et trésorerie")
+    with st.form("formulaire_creance", clear_on_submit=True):
+        col_f1, col_f2, col_f3 = st.columns(3)
+        date_op = col_f1.date_input("Date de l'opération", datetime.now(), max_value=datetime.now().date())
+        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles)
+        nouveau_type = col_f3.selectbox("Type de vente", ["Œufs", "Poules réforme", "Fiente engrais", "Poulets de chair"])
+        
+        col_f4, col_f5 = st.columns(2)
+        nouveau_montant = col_f4.number_input("Montant dû ou payé (FCFA)", min_value=0, step=5000)
+        nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé cash"])
+        
+        if st.form_submit_button("➕ Enregistrer l'opération financière"):
+            with st.spinner("Enregistrement de l'opération..."):
+                heure_op = datetime.now().strftime("%H:%M")
+                nouvelle_ligne = pd.DataFrame({
+                    "Date": [date_op.strftime("%d/%m/%Y")],
+                    "Heure": [heure_op],
+                    "Client": [nouveau_client],
+                    "Type Vente": [nouveau_type],
+                    "Montant Dû (FCFA)": [nouveau_montant],
+                    "Statut": [nouveau_statut]
+                })
+                df_creances_maj = pd.concat([df_creances, nouvelle_ligne], ignore_index=True)
+                conn.update(worksheet="Creances", data=df_creances_maj)
+            st.success("Opération enregistrée dans la base de données.")
+            st.rerun()
+    
+    if not df_creances.empty:
+        st.dataframe(df_creances, use_container_width=True)
+
+    st.divider()
+
+    st.header("🗄️ Base de données historique et états récapitulatifs")
+
+    if not df_hist.empty:
+        for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
+            df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
+
+        filtre_bat = st.selectbox("Filtrer l'état par bâtiment :", ["Tous les bâtiments"] + liste_bandes)
+        if filtre_bat != "Tous les bâtiments":
+            df_affiche = df_hist[df_hist["Bâtiment"] == filtre_bat]
+        else:
+            df_affiche = df_hist
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
+        k2.metric("Total cassés (pertes)", f"{int(df_affiche['Cassés'].sum())} pl.")
+        k3.metric("Mortalité cumulée", f"{int(df_affiche['Mortalité'].sum())} sujets")
+        k4.metric("Aliment total consommé", f"{df_affiche['Aliment (kg)'].sum():,.1f} kg")
+
+        st.dataframe(df_affiche, use_container_width=True)
+
+        csv_hist = df_affiche.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📊 Tirer l'état complet pour Excel (CSV)",
+            data=csv_hist,
+            file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("L'historique s'affichera ici dès que Sokodé aura effectué sa première saisie.")
