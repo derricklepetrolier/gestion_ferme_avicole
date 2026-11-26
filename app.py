@@ -37,9 +37,12 @@ def charger_donnees(onglet, colonnes_defaut):
 
 def parse_float(val, defaut=0.0):
     try:
-        return float(str(val).replace("%", "").replace(",", ".").strip())
+        return float(str(val).replace("%", "").replace(",", ".").replace(" ", "").strip())
     except Exception:
         return defaut
+
+def format_fcfa(montant):
+    return f"{int(round(montant)):,}".replace(",", " ") + " FCFA"
 
 cols_ferme = [
     "Date", "Heure Saisie", "Bâtiment", "Élevage", "PIWI", "Petits", 
@@ -51,14 +54,20 @@ cols_creances = ["Date", "Heure", "Client", "Type Vente", "Montant Dû (FCFA)", 
 cols_stock = ["Intrant", "Quantité", "Unité", "Seuil Alerte"]
 cols_params = ["Paramètre", "Valeur"]
 
-# --- 3. GESTION PERSISTANTE DE LA CONNEXION ---
+# --- 3. GESTION PERSISTANTE ET SECURISEE DE LA CONNEXION ---
+TOKENS_SESSION = {
+    "skd_84a9f2": "ferme",
+    "lme_91f2c7": "direction"
+}
+ROLE_TO_TOKEN = {v: k for k, v in TOKENS_SESSION.items()}
+
 params = st.query_params
-role_url = params.get("role", "")
+session_token = params.get("session", "")
 
 if "authentifie" not in st.session_state:
-    if role_url in ["ferme", "direction"]:
+    if session_token in TOKENS_SESSION:
         st.session_state["authentifie"] = True
-        st.session_state["role"] = role_url
+        st.session_state["role"] = TOKENS_SESSION[session_token]
     else:
         st.session_state["authentifie"] = False
         st.session_state["role"] = ""
@@ -74,12 +83,12 @@ if not st.session_state["authentifie"]:
         if identifiant == "Sokode" and mot_de_passe == "Terrain2026!":
             st.session_state["authentifie"] = True
             st.session_state["role"] = "ferme"
-            st.query_params["role"] = "ferme"
+            st.query_params["session"] = ROLE_TO_TOKEN["ferme"]
             st.rerun()
         elif identifiant == "Lome" and mot_de_passe == "Direction2026!":
             st.session_state["authentifie"] = True
             st.session_state["role"] = "direction"
-            st.query_params["role"] = "direction"
+            st.query_params["session"] = ROLE_TO_TOKEN["direction"]
             st.rerun()
         else:
             st.error("Identifiant ou mot de passe incorrect.")
@@ -266,7 +275,12 @@ elif st.session_state["role"] == "direction":
 
     if not df_hist.empty:
         derniere_ligne = df_hist.iloc[-1]
-        st.info(f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** sur **{derniere_ligne['Bâtiment']}** ({derniere_ligne['Total Plateaux']} plateaux, taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {derniere_ligne['Mortalité']} mort)")
+        dernier_pl = int(parse_float(derniere_ligne["Total Plateaux"], 0))
+        dernier_mort = int(parse_float(derniere_ligne["Mortalité"], 0))
+        st.info(
+            f"📅 **Dernier relevé reçu de Sokodé :** le {derniere_ligne['Date']} à **{derniere_ligne['Heure Saisie']}** "
+            f"sur **{derniere_ligne['Bâtiment']}** ({dernier_pl} plateaux, taux de ponte : {derniere_ligne['Taux de Ponte (%)']}, {dernier_mort} mort)"
+        )
     else:
         st.warning("Aucun relevé n'a encore été enregistré dans la base centrale.")
         
@@ -347,11 +361,9 @@ elif st.session_state["role"] == "direction":
                 st.session_state["objectif_ponte"] = new_obj_ponte
                 st.session_state["seuil_mortalite"] = new_seuil_mort
 
-                # Mise à jour des seuils du magasin
                 df_stock_seuils = pd.DataFrame(stock_seuils_maj)
                 conn.update(worksheet="Stock", data=df_stock_seuils)
 
-                # Sauvegarde des seuils de production dans l'onglet Parametres
                 df_params_nouveau = pd.DataFrame({
                     "Paramètre": ["Objectif_Ponte", "Seuil_Mortalite"],
                     "Valeur": [new_obj_ponte, new_seuil_mort]
@@ -365,6 +377,7 @@ elif st.session_state["role"] == "direction":
     
     st.divider()
     
+    # --- ETAT DU MAGASIN ---
     st.header("🏭 État du magasin et gestion des stocks")
 
     cols_met = st.columns(len(df_stock))
@@ -391,8 +404,90 @@ elif st.session_state["role"] == "direction":
                 st.rerun()
 
     st.divider()
+
+    # --- TABLEAU DE BORD FINANCIER ---
+    st.header("📈 États financiers et suivi de trésorerie")
+
+    if not df_creances.empty:
+        df_fin = df_creances.copy()
+        df_fin["_montant"] = df_fin["Montant Dû (FCFA)"].apply(lambda x: parse_float(x, 0.0))
+        df_fin["_date"] = pd.to_datetime(df_fin["Date"], format="%d/%m/%Y", errors="coerce")
+        df_fin["_statut_norm"] = df_fin["Statut"].astype(str).str.strip().str.lower()
+
+        periode = st.radio(
+            "Période d'analyse :",
+            ["Tout l'historique", "Ce mois-ci", "Aujourd'hui"],
+            horizontal=True
+        )
+
+        maintenant = datetime.now()
+        if periode == "Aujourd'hui":
+            df_fin_filtre = df_fin[df_fin["_date"].dt.date == maintenant.date()]
+        elif periode == "Ce mois-ci":
+            df_fin_filtre = df_fin[
+                (df_fin["_date"].dt.year == maintenant.year) &
+                (df_fin["_date"].dt.month == maintenant.month)
+            ]
+        else:
+            df_fin_filtre = df_fin
+
+        ca_total = df_fin_filtre["_montant"].sum()
+        ca_encaisse = df_fin_filtre.loc[df_fin_filtre["_statut_norm"].str.contains("pay", na=False), "_montant"].sum()
+        ca_retard = df_fin_filtre.loc[df_fin_filtre["_statut_norm"].str.contains("retard", na=False), "_montant"].sum()
+        ca_creances = ca_total - ca_encaisse
+        taux_recouvrement = (ca_encaisse / ca_total * 100) if ca_total > 0 else 0.0
+
+        f1, f2, f3, f4 = st.columns(4)
+        f1.metric("Chiffre d'affaires facturé", format_fcfa(ca_total))
+        f2.metric("Trésorerie encaissée", format_fcfa(ca_encaisse))
+        delta_retard = f"Dont {format_fcfa(ca_retard)} en retard" if ca_retard > 0 else "Aucun retard"
+        f3.metric("Créances clients", format_fcfa(ca_creances), delta_retard, delta_color="inverse" if ca_retard > 0 else "normal")
+        f4.metric("Taux de recouvrement", f"{taux_recouvrement:.1f} %")
+
+        if not df_fin_filtre.empty:
+            col_v1, col_v2 = st.columns(2)
+
+            with col_v1:
+                st.subheader("Ventilation par client")
+                df_par_client = (
+                    df_fin_filtre.groupby("Client", as_index=False)
+                    .agg(
+                        CA_Total=("_montant", "sum"),
+                        Encaisse=("_montant", lambda s: s[df_fin_filtre.loc[s.index, "_statut_norm"].str.contains("pay", na=False)].sum())
+                    )
+                )
+                df_par_client["Reste à recouvrer"] = df_par_client["CA_Total"] - df_par_client["Encaisse"]
+                df_par_client = df_par_client.sort_values("CA_Total", ascending=False)
+                df_par_client = df_par_client.rename(columns={"CA_Total": "CA facturé (FCFA)", "Encaisse": "Encaissé (FCFA)"})
+                st.dataframe(df_par_client, use_container_width=True, hide_index=True)
+
+            with col_v2:
+                st.subheader("Répartition par type de vente")
+                df_par_type = (
+                    df_fin_filtre.groupby("Type Vente", as_index=False)
+                    .agg(CA=("_montant", "sum"))
+                    .sort_values("CA", ascending=False)
+                )
+                df_par_type["Part (%)"] = df_par_type["CA"].apply(lambda x: f"{(x / ca_total * 100):.1f} %" if ca_total > 0 else "0.0 %")
+                df_par_type = df_par_type.rename(columns={"CA": "Montant (FCFA)"})
+                st.dataframe(df_par_type, use_container_width=True, hide_index=True)
+
+            csv_fin = df_fin_filtre[cols_creances].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📊 Exporter l'état financier pour Excel (CSV)",
+                data=csv_fin,
+                file_name=f"Etat_Financier_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info(f"Aucune opération financière enregistrée pour la période sélectionnée ({periode}).")
+    else:
+        st.info("Les indicateurs financiers s'afficheront ici dès la première vente enregistrée.")
+
+    st.divider()
     
-    st.header("💰 Module financier/ventes clients")
+    # --- MODULE FINANCIER / CALCULATEUR DE VENTE ---
+    st.header("💰 Module financier et ventes clients")
     type_client = st.radio("Grille tarifaire de référence :", ["Grossiste", "Détaillant"], horizontal=True)
     grille_active = prix_grossiste if type_client == "Grossiste" else prix_detaillant
     
@@ -405,15 +500,15 @@ elif st.session_state["role"] == "direction":
     
     for i, cal in enumerate(calibres):
         with cols_vente[i]:
-            val_def = 20 if cal == "Gros" else 0
-            ventes[cal] = st.number_input(f"{cal}", value=val_def, min_value=0, step=5, key=f"v_{cal}")
+            ventes[cal] = st.number_input(f"{cal}", value=0, min_value=0, step=5, key=f"v_{cal}")
             st.caption(f"{grille_active[cal]} F/pl")
             
     ca_client = sum(ventes[cal] * grille_active[cal] for cal in calibres)
-    st.markdown(f"<h3 style='color: #4CAF50;'>Chiffre d'affaires pour {client_actif} : {ca_client:,.0f} FCFA</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color: #4CAF50;'>Chiffre d'affaires pour {client_actif} : {format_fcfa(ca_client)}</h3>", unsafe_allow_html=True)
     
     st.divider()
     
+    # --- GESTION DES CREANCES ET ENCAISSEMENTS ---
     st.header("📝 Gestion des créances et trésorerie")
     with st.form("formulaire_creance"):
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -442,13 +537,38 @@ elif st.session_state["role"] == "direction":
                 conn.update(worksheet="Creances", data=df_creances_maj)
             st.success("Opération enregistrée dans la base de données.")
             st.rerun()
-    
+
     if not df_creances.empty:
+        # Encaisser ou mettre à jour le statut d'une créance existante
+        masque_impayes = ~df_creances["Statut"].astype(str).str.strip().str.lower().str.contains("pay", na=False)
+        df_impayes = df_creances[masque_impayes]
+
+        if not df_impayes.empty:
+            with st.expander("✅ Encaisser ou mettre à jour une créance en cours"):
+                options_impayes = {
+                    idx: f"{row['Date']} à {row['Heure']} | {row['Client']} | {row['Type Vente']} | {format_fcfa(parse_float(row['Montant Dû (FCFA)'], 0))} ({row['Statut']})"
+                    for idx, row in df_impayes.iterrows()
+                }
+                with st.form("form_cloture_creance"):
+                    idx_choisi = st.selectbox(
+                        "Sélectionner l'opération à mettre à jour :",
+                        options=list(options_impayes.keys()),
+                        format_func=lambda i: options_impayes[i]
+                    )
+                    nouveau_statut_maj = st.selectbox("Nouveau statut :", ["Payé cash", "Retard", "En attente"])
+                    if st.form_submit_button("💾 Mettre à jour le statut"):
+                        df_creances_maj = df_creances.copy()
+                        df_creances_maj.at[idx_choisi, "Statut"] = nouveau_statut_maj
+                        conn.update(worksheet="Creances", data=df_creances_maj)
+                        st.success("Statut de la créance mis à jour avec succès.")
+                        st.rerun()
+
         st.dataframe(df_creances, use_container_width=True)
 
     st.divider()
 
-    st.header("🗄️ Etats récapitulatifs")
+    # --- ETATS RECAPITULATIFS PRODUCTION ---
+    st.header("🗄️ États récapitulatifs")
 
     if not df_hist.empty:
         for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
