@@ -10,7 +10,7 @@ from streamlit_gsheets import GSheetsConnection
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NGA AgroGestion", layout="wide", page_icon="🐓")
 
-# --- MASQUER L'INTERFACE, LES MENUS ET LES LOGOS EN BAS A DROITE ---
+# --- MASQUER L'INTERFACE ET STYLISER LES BOUTONS ---
 cacher_menu_style = """
         <style>
         #MainMenu {visibility: hidden;} 
@@ -21,10 +21,28 @@ cacher_menu_style = """
         .stAppDeployButton {display: none !important;} 
         footer {display: none !important;} 
         iframe {display: none !important;} 
+
+        /* Style visible pour tous les boutons cliquables */
+        div.stButton > button,
+        div.stFormSubmitButton > button,
+        div.stDownloadButton > button {
+            background-color: #2E7D32 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+            padding: 0.5rem 1rem !important;
+            transition: background-color 0.2s ease !important;
+        }
+        div.stButton > button:hover,
+        div.stFormSubmitButton > button:hover,
+        div.stDownloadButton > button:hover {
+            background-color: #1B5E20 !important;
+            color: #FFFFFF !important;
+        }
         </style>
         """
 st.markdown(cacher_menu_style, unsafe_allow_html=True)
-
 # --- 2. CONNEXION A LA BASE DE DONNEES ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
