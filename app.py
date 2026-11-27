@@ -219,22 +219,29 @@ if st.session_state["role"] == "ferme":
     num_etape_stock = 2 if "Pondeuses" in type_elevage else 1
     num_etape_pdf = 3 if "Pondeuses" in type_elevage else 2
 
-    st.subheader(f"📦 {num_etape_stock}. Déclaration des événements et des sorties de stock")
-    col_s1, col_s2, col_s3 = st.columns(3)
-    
-    with col_s1:
-        mortalite = st.number_input("Mortalité du jour (nombre de sujets)", min_value=0, step=1)
-    with col_s2:
-        aliment_consomme = st.number_input("Aliment distribué (kg)", min_value=0.0, step=5.0)
-        index_alim_defaut = liste_aliments.index("Ponte phase 1") if "Pondeuses" in type_elevage else 0
-        type_aliment = st.selectbox("Type d'aliment", liste_aliments, index=index_alim_defaut, key=f"alim_{type_elevage}")
-    with col_s3:
-        gasoil = st.number_input("Gasoil consommé (litres)", min_value=0.0, step=1.0)
-        veto = st.text_input("Produits vétérinaires utilisés (optionnel)")
+    with st.form("form_evenements_stock"):
+        st.subheader(f"📦 {num_etape_stock}. Déclaration des événements et des sorties de stock")
+        col_s1, col_s2, col_s3 = st.columns(3)
         
-    st.divider()
-    st.subheader(f"📄 {num_etape_pdf}. Génération du rapport quotidien (bordereau chauffeur)")
-    
+        with col_s1:
+            mortalite = st.number_input("Mortalité du jour (nombre de sujets)", min_value=0, step=1)
+        with col_s2:
+            aliment_consomme = st.number_input("Aliment distribué (kg)", min_value=0.0, step=5.0)
+            index_alim_defaut = liste_aliments.index("Ponte phase 1") if "Pondeuses" in type_elevage else 0
+            type_aliment = st.selectbox("Type d'aliment", liste_aliments, index=index_alim_defaut, key=f"alim_{type_elevage}")
+        with col_s3:
+            gasoil = st.number_input("Gasoil consommé (litres)", min_value=0.0, step=1.0)
+            veto = st.text_input("Produits vétérinaires utilisés (optionnel)")
+            
+        st.divider()
+        st.subheader(f"📄 {num_etape_pdf}. Génération du rapport quotidien (bordereau chauffeur)")
+
+        confirmer_doublon = True
+        if doublon_existe:
+            confirmer_doublon = st.checkbox("Confirmer l'ajout d'un second relevé pour ce bâtiment à cette même date")
+
+        soumis = st.form_submit_button("💾 Enregistrer et générer le rapport")
+
     def generer_rapport_terrain(heure_actuelle):
         pdf = FPDF()
         pdf.add_page()
@@ -274,11 +281,7 @@ if st.session_state["role"] == "ferme":
         
         return bytes(pdf.output(dest='S').encode('latin-1', 'replace'))
 
-    confirmer_doublon = True
-    if doublon_existe:
-        confirmer_doublon = st.checkbox("Confirmer l'ajout d'un second relevé pour ce bâtiment à cette même date")
-
-    if st.button("💾 Enregistrer et générer le rapport"):
+    if soumis:
         releve_vide = (
             total_plateaux == 0 and surplus_oeufs == 0 and mortalite == 0
             and aliment_consomme == 0 and gasoil == 0 and not veto.strip()
@@ -607,4 +610,94 @@ elif st.session_state["role"] == "direction":
     
     st.divider()
     
-    # --- GEST
+    # --- GESTION DES CREANCES ET ENCAISSEMENTS ---
+    st.header("📝 Gestion des créances et trésorerie")
+    with st.form("formulaire_creance"):
+        col_f1, col_f2, col_f3 = st.columns(3)
+        date_op = col_f1.date_input("Date de l'opération", datetime.now(), max_value=datetime.now().date())
+        
+        index_client = clients_disponibles.index(client_actif)
+        nouveau_client = col_f2.selectbox("Acheteur", clients_disponibles, index=index_client, key=f"acheteur_{client_actif}")
+        nouveau_type = col_f3.selectbox("Type de vente", ["Œufs", "Poules réforme", "Fiente engrais", "Poulets de chair"])
+        
+        col_f4, col_f5 = st.columns(2)
+        nouveau_montant = col_f4.number_input("Montant dû ou payé (FCFA)", min_value=0, value=int(ca_client), step=5000, key=f"montant_{ca_client}")
+        nouveau_statut = col_f5.selectbox("Statut du paiement", ["En attente", "Retard", "Payé cash"])
+        
+        if st.form_submit_button("➕ Enregistrer l'opération financière"):
+            with st.spinner("Enregistrement de l'opération..."):
+                heure_op = datetime.now().strftime("%H:%M")
+                nouvelle_ligne = pd.DataFrame({
+                    "Date": [date_op.strftime("%d/%m/%Y")],
+                    "Heure": [heure_op],
+                    "Client": [nouveau_client],
+                    "Type Vente": [nouveau_type],
+                    "Montant Dû (FCFA)": [nouveau_montant],
+                    "Statut": [nouveau_statut]
+                })
+                df_creances_maj = pd.concat([df_creances, nouvelle_ligne], ignore_index=True)
+                conn.update(worksheet="Creances", data=df_creances_maj)
+                st.cache_data.clear()
+            st.success("Opération enregistrée dans la base de données.")
+            st.rerun()
+
+    if not df_creances.empty:
+        # Encaisser ou mettre à jour le statut d'une créance existante
+        masque_impayes = ~df_creances["Statut"].astype(str).str.strip().str.lower().str.contains("pay", na=False)
+        df_impayes = df_creances[masque_impayes]
+
+        if not df_impayes.empty:
+            with st.expander("✅ Encaisser ou mettre à jour une créance en cours"):
+                options_impayes = {
+                    idx: f"{row['Date']} à {row['Heure']} | {row['Client']} | {row['Type Vente']} | {format_fcfa(parse_float(row['Montant Dû (FCFA)'], 0))} ({row['Statut']})"
+                    for idx, row in df_impayes.iterrows()
+                }
+                with st.form("form_cloture_creance"):
+                    idx_choisi = st.selectbox(
+                        "Sélectionner l'opération à mettre à jour :",
+                        options=list(options_impayes.keys()),
+                        format_func=lambda i: options_impayes[i]
+                    )
+                    nouveau_statut_maj = st.selectbox("Nouveau statut :", ["Payé cash", "Retard", "En attente"])
+                    if st.form_submit_button("💾 Mettre à jour le statut"):
+                        df_creances_maj = df_creances.copy()
+                        df_creances_maj.at[idx_choisi, "Statut"] = nouveau_statut_maj
+                        conn.update(worksheet="Creances", data=df_creances_maj)
+                        st.cache_data.clear()
+                        st.success("Statut de la créance mis à jour avec succès.")
+                        st.rerun()
+
+        st.dataframe(df_creances, use_container_width=True)
+
+    st.divider()
+
+    # --- ETATS RECAPITULATIFS PRODUCTION ---
+    st.header("🗄️ États récapitulatifs")
+
+    if not df_hist.empty:
+        for col_num in ["Total Plateaux", "Cassés", "Mortalité", "Aliment (kg)"]:
+            df_hist[col_num] = pd.to_numeric(df_hist[col_num], errors="coerce").fillna(0)
+
+        filtre_bat = st.selectbox("Filtrer l'état par bâtiment :", ["Tous les bâtiments"] + liste_bandes)
+        if filtre_bat != "Tous les bâtiments":
+            df_affiche = df_hist[df_hist["Bâtiment"] == filtre_bat]
+        else:
+            df_affiche = df_hist
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total plateaux produits", f"{int(df_affiche['Total Plateaux'].sum())} pl.")
+        k2.metric("Total cassés (pertes)", f"{int(df_affiche['Cassés'].sum())} pl.")
+        k3.metric("Mortalité cumulée", f"{int(df_affiche['Mortalité'].sum())} sujets")
+        k4.metric("Aliment total consommé", f"{df_affiche['Aliment (kg)'].sum():,.1f} kg")
+
+        st.dataframe(df_affiche, use_container_width=True)
+
+        csv_hist = df_affiche.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📊 Tirer l'état complet pour Excel (CSV)",
+            data=csv_hist,
+            file_name=f"Historique_Production_NGA_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("L'historique s'affichera ici dès que Sokodé aura effectué sa première saisie.")
