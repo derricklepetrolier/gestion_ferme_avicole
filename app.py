@@ -11,6 +11,7 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="NGA AgroGestion", layout="wide", page_icon="🐓")
 
 # --- MASQUER L'INTERFACE ET STYLISER LES BOUTONS ---
+# --- MASQUER L'INTERFACE ET STYLISER LES BOUTONS ---
 cacher_menu_style = """
         <style>
         #MainMenu {visibility: hidden;} 
@@ -26,7 +27,7 @@ cacher_menu_style = """
         div.stButton > button,
         div.stFormSubmitButton > button,
         div.stDownloadButton > button {
-            background-color: #2E7D32 !important;
+            background-color: #1E3A8A !important;
             color: #FFFFFF !important;
             border: none !important;
             border-radius: 6px !important;
@@ -37,7 +38,7 @@ cacher_menu_style = """
         div.stButton > button:hover,
         div.stFormSubmitButton > button:hover,
         div.stDownloadButton > button:hover {
-            background-color: #1B5E20 !important;
+            background-color: #172554 !important;
             color: #FFFFFF !important;
         }
         </style>
